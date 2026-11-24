@@ -1,0 +1,12 @@
+# Pack de exemplo do formato Atlana (spec v0.1).
+apiVersion: atlana/v1alpha1
+kind: Pack
+name: hello
+version: 0.1.0
+description: Pack de exemplo com uma skill genérica para escrever mensagens de commit no padrão Conventional Commits.
+license: MIT
+visibility: public
+authors: [atlana-ai-hq]
+
+modules:
+  skills: [conventional-commit-message]

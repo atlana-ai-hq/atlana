@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/atlana-ai-hq/atlana/spec/schemas/atlana.schema.json",
+  "title": "Atlana pack manifest (atlana.yaml)",
+  "description": "Manifesto de um pack Atlana, spec v0.1 (apiVersion atlana/v1alpha1).",
+  "type": "object",
+  "required": ["apiVersion", "kind", "name", "version", "description"],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-": {}
+  },
+  "properties": {
+    "apiVersion": { "const": "atlana/v1alpha1" },
+    "kind": { "const": "Pack" },
+    "name": { "$ref": "#/$defs/name" },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "license": { "type": "string", "minLength": 1 },
+    "visibility": { "enum": ["public", "private"], "default": "public" },
+    "authors": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "homepage": { "type": "string", "format": "uri" },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rules": { "$ref": "#/$defs/fileList" },
+        "skills": { "$ref": "#/$defs/nameList" },
+        "agents": { "$ref": "#/$defs/nameList" },
+        "hooks": { "$ref": "#/$defs/nameList" },
+        "commands": { "$ref": "#/$defs/nameList" },
+        "mcp": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "packs": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(@.+)?$" }, "uniqueItems": true },
+        "bins": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "env": {
+          "description": "Apenas NOMES de variáveis de ambiente. Valores nunca entram no manifesto.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": { "$ref": "#/$defs/agentList" },
+        "exclude": { "$ref": "#/$defs/agentList" },
+        "overrides": { "type": "object", "propertyNames": { "$ref": "#/$defs/agentId" } }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "description": "Mesmas regras do campo name de Agent Skills: 1-64 chars, a-z, 0-9 e hífen, sem hífen no início/fim nem duplo.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "nameList": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+    "fileList": { "type": "array", "items": { "type": "string", "pattern": "^[^/][^\\\\]*$" }, "uniqueItems": true },
+    "agentId": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "agentList": { "type": "array", "items": { "$ref": "#/$defs/agentId" }, "uniqueItems": true }
+  }
+}

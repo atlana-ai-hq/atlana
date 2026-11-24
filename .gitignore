@@ -1,0 +1,9 @@
+# binário local
+/atlana
+/bin/
+# saídas geradas (atlana build, cobertura)
+/dist/
+coverage.out
+# lockfile de testes manuais na raiz do repo
+/atlana.lock
+.DS_Store

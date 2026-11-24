@@ -1,0 +1,158 @@
+package cli
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/atlana-ai-hq/atlana/internal/adapter"
+)
+
+var helloPack, _ = filepath.Abs(filepath.Join("..", "..", "packs", "hello"))
+
+func newApp(t *testing.T, bins ...string) (*App, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	have := map[string]bool{}
+	for _, b := range bins {
+		have[b] = true
+	}
+	var out, errb bytes.Buffer
+	return &App{
+		Stdout: &out, Stderr: &errb, Stdin: strings.NewReader(""),
+		Env: adapter.Env{
+			Home: t.TempDir(), WorkDir: t.TempDir(),
+			LookPath: func(b string) (string, error) {
+				if have[b] {
+					return "/usr/bin/" + b, nil
+				}
+				return "", errors.New("x")
+			},
+			Getenv: func(string) string { return "" },
+		},
+		Now: func() time.Time { return time.Unix(0, 0) },
+	}, &out, &errb
+}
+
+func TestVersion(t *testing.T) {
+	app, out, _ := newApp(t)
+	if code := app.Run([]string{"version"}); code != 0 || !strings.Contains(out.String(), "atlana/v1alpha1") {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+}
+
+func TestUnknownCommand(t *testing.T) {
+	app, _, _ := newApp(t)
+	if code := app.Run([]string{"nope"}); code != 2 {
+		t.Fatalf("code=%d", code)
+	}
+}
+
+func TestDoctor(t *testing.T) {
+	app, out, _ := newApp(t, "cursor-agent")
+	if code := app.Run([]string{"doctor"}); code != 0 {
+		t.Fatal(code)
+	}
+	for _, want := range []string{"Cursor", "Claude Code", "Codex CLI", "Gemini CLI", "/usr/bin/cursor-agent"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("doctor sem %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestValidateRepoPacks(t *testing.T) {
+	app, out, errb := newApp(t)
+	if code := app.Run([]string{"validate", filepath.Dir(helloPack)}); code != 0 {
+		t.Fatalf("code=%d\n%s%s", code, out, errb)
+	}
+}
+
+func TestValidateInvalid(t *testing.T) {
+	app, out, _ := newApp(t)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "atlana.yaml"), []byte("apiVersion: atlana/v1alpha1\nkind: Pack\nname: X\n"), 0o644)
+	if code := app.Run([]string{"validate", dir}); code != 1 || !strings.Contains(out.String(), "FALHA") {
+		t.Fatalf("code=%d out=%s", code, out)
+	}
+}
+
+func TestInstallDryRunThenApplyThenUninstall(t *testing.T) {
+	app, out, errb := newApp(t)
+	skill := filepath.Join(app.Env.Home, ".cursor", "skills", "conventional-commit-message", "SKILL.md")
+
+	// flags depois do posicional, como no README.
+	code := app.Run([]string{"install", helloPack, "--only", "skills", "--agent", "cursor,claude", "--dry-run"})
+	if code != 0 || !strings.Contains(out.String(), "--dry-run: nada foi alterado") {
+		t.Fatalf("dry-run code=%d\n%s%s", code, out, errb)
+	}
+	if _, err := os.Stat(skill); !os.IsNotExist(err) {
+		t.Fatal("dry-run escreveu no disco")
+	}
+
+	// Sem terminal e sem --yes: recusa.
+	if code := app.Run([]string{"install", helloPack, "--agent", "cursor"}); code != 2 {
+		t.Fatalf("sem --yes deveria falhar com 2, veio %d", code)
+	}
+
+	out.Reset()
+	if code := app.Run([]string{"install", "--agent", "cursor,claude", "--yes", helloPack}); code != 0 {
+		t.Fatalf("install code=%d\n%s%s", code, out, errb)
+	}
+	if _, err := os.Stat(skill); err != nil {
+		t.Fatal("skill não instalada")
+	}
+
+	out.Reset()
+	app.Run([]string{"status"})
+	if !strings.Contains(out.String(), "hello") || strings.Count(out.String(), " ok") != 2 {
+		t.Fatalf("status inesperado:\n%s", out)
+	}
+
+	if code := app.Run([]string{"uninstall", "hello", "--yes"}); code != 0 {
+		t.Fatalf("uninstall code=%d %s", code, errb)
+	}
+	if _, err := os.Stat(skill); !os.IsNotExist(err) {
+		t.Fatal("uninstall não removeu")
+	}
+}
+
+func TestInteractiveConfirm(t *testing.T) {
+	app, out, _ := newApp(t)
+	app.Interactive = true
+	app.Stdin = strings.NewReader("n\n")
+	app.Run([]string{"install", helloPack, "--agent", "cursor"})
+	if !strings.Contains(out.String(), "Cancelado") {
+		t.Fatalf("esperava cancelamento:\n%s", out)
+	}
+	app.Stdin = strings.NewReader("s\n")
+	if code := app.Run([]string{"install", helloPack, "--agent", "cursor"}); code != 0 {
+		t.Fatal(code)
+	}
+	if _, err := os.Stat(filepath.Join(app.Env.Home, ".cursor", "skills", "conventional-commit-message", "SKILL.md")); err != nil {
+		t.Fatal("confirmação 's' deveria instalar")
+	}
+}
+
+func TestInstallNoAgentsDetected(t *testing.T) {
+	app, _, errb := newApp(t)
+	if code := app.Run([]string{"install", helloPack, "--dry-run"}); code != 1 || !strings.Contains(errb.String(), "nenhum agente detectado") {
+		t.Fatalf("code=%d err=%s", code, errb)
+	}
+}
+
+func TestInstallBadFlags(t *testing.T) {
+	app, _, _ := newApp(t)
+	for _, args := range [][]string{
+		{"install"},
+		{"install", helloPack, "--only", "plugins", "--agent", "cursor"},
+		{"install", helloPack, "--agent", "vim"},
+		{"install", helloPack, "--scope", "global", "--agent", "cursor"},
+	} {
+		if code := app.Run(args); code != 2 {
+			t.Errorf("%v: code=%d, esperado 2", args, code)
+		}
+	}
+}
