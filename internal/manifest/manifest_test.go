@@ -179,3 +179,28 @@ func TestRepoPacksAreValid(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPSecretsAreOnlyReferences(t *testing.T) {
+	m := validManifest + "  mcp: [ok, leak, remote, both]\nrequires:\n  env: [TOKEN]\n"
+	dir := newPack(t, m, validSkill)
+	writeFile(t, filepath.Join(dir, "mcp.json"), `{"mcpServers": {
+  "ok": {"command": "npx", "env": {"TOKEN": "${TOKEN}", "OTHER": "${UNDECLARED}"}},
+  "leak": {"command": "npx", "env": {"TOKEN": "sk-123"}},
+  "remote": {"url": "https://x", "headers": {"Authorization": "Bearer ${TOKEN}", "X-Key": "abc"}},
+  "both": {"command": "a", "url": "b"}
+}}`)
+	_, rep, _ := Load(dir)
+	for _, want := range []string{
+		"mcpServers.leak.env.TOKEN: use só referência",
+		"mcpServers.remote.headers.X-Key: use só referência",
+		"mcpServers.both: precisa de exatamente um entre command e url",
+		"usa ${UNDECLARED}, que não está em requires.env",
+	} {
+		if !hasIssue(rep, want) {
+			t.Errorf("faltou %q: %+v", want, rep.Issues)
+		}
+	}
+	if hasIssue(rep, "mcpServers.ok.env.TOKEN") || hasIssue(rep, "Authorization") {
+		t.Errorf("referências válidas não deveriam gerar erro: %+v", rep.Issues)
+	}
+}

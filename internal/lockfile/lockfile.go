@@ -23,6 +23,14 @@ type File struct {
 	SHA256 string `json:"sha256"`
 }
 
+// Key é um item que o atlana mantém dentro de um arquivo que não é dele
+// (ex.: um servidor em mcpServers). SHA256 é o hash do valor normalizado.
+type Key struct {
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+}
+
 // Entry registra um pack instalado num agente para um módulo.
 type Entry struct {
 	Pack        string `json:"pack"`
@@ -33,6 +41,7 @@ type Entry struct {
 	Root        string `json:"root"`
 	InstalledAt string `json:"installedAt"`
 	Files       []File `json:"files"`
+	Keys        []Key  `json:"keys,omitempty"`
 }
 
 // Key identifica uma entrada.
@@ -120,6 +129,19 @@ func (l *Lock) Owners(path string) []string {
 	return keys
 }
 
+// KeyOwners lista as entradas que mantêm a chave name em path.
+func (l *Lock) KeyOwners(path, name string) []string {
+	var keys []string
+	for _, e := range l.Entries {
+		for _, k := range e.Keys {
+			if k.Path == path && k.Name == name {
+				keys = append(keys, e.Key())
+			}
+		}
+	}
+	return keys
+}
+
 // Save grava o lockfile de forma atômica e ordenada (diffs estáveis).
 func (l *Lock) Save(path string) error {
 	l.Version = SchemaVersion
@@ -127,6 +149,13 @@ func (l *Lock) Save(path string) error {
 	for i := range l.Entries {
 		files := l.Entries[i].Files
 		sort.Slice(files, func(a, b int) bool { return files[a].Path < files[b].Path })
+		keys := l.Entries[i].Keys
+		sort.Slice(keys, func(a, b int) bool {
+			if keys[a].Path != keys[b].Path {
+				return keys[a].Path < keys[b].Path
+			}
+			return keys[a].Name < keys[b].Name
+		})
 	}
 	raw, err := json.MarshalIndent(l, "", "  ")
 	if err != nil {

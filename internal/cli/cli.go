@@ -388,7 +388,11 @@ func printPlan(w io.Writer, p *installer.Plan) {
 	counts := map[installer.Op]int{}
 	for _, act := range p.Actions {
 		counts[act.Op]++
-		fmt.Fprintf(w, "  %-9s [%s/%s] %s\n", act.Op, act.Agent, act.Module, act.Path)
+		target := act.Path
+		if act.Key != "" {
+			target += " → " + act.Key
+		}
+		fmt.Fprintf(w, "  %-9s [%s/%s] %s\n", act.Op, act.Agent, act.Module, target)
 	}
 	for _, n := range p.Notes {
 		fmt.Fprintln(w, "  nota:", n)
@@ -418,7 +422,7 @@ func (a *App) status() error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(a.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "PACK\tVERSÃO\tAGENTE\tMÓDULO\tESCOPO\tARQUIVOS\tESTADO")
+	fmt.Fprintln(tw, "PACK\tVERSÃO\tAGENTE\tMÓDULO\tESCOPO\tITENS\tESTADO")
 	for _, e := range entries {
 		counts := map[installer.FileState]int{}
 		for _, s := range e.States {
@@ -435,7 +439,7 @@ func (a *App) status() error {
 			sort.Strings(bad)
 			state = strings.Join(bad, ", ")
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", e.Entry.Pack, e.Entry.Version, e.Entry.Agent, e.Entry.Module, e.Scope, len(e.Entry.Files), state)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", e.Entry.Pack, e.Entry.Version, e.Entry.Agent, e.Entry.Module, e.Scope, len(e.Entry.Files)+len(e.Entry.Keys), state)
 	}
 	return tw.Flush()
 }

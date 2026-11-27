@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/atlana-ai-hq/atlana/internal/adapter"
+	"github.com/atlana-ai-hq/atlana/internal/configmerge"
 	"github.com/atlana-ai-hq/atlana/internal/lockfile"
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
 )
@@ -40,7 +41,12 @@ type Action struct {
 	Path    string // destino absoluto
 	Source  string // origem (vazio em remoções e em conteúdo gerado)
 	Content []byte // conteúdo gerado pelo adaptador (no lugar de Source)
-	SHA256  string // hash do conteúdo final (ou do arquivo removido)
+	// Key != "" marca um item dentro de um arquivo que não é nosso (ex.: um
+	// servidor MCP). Content é então o arquivo inteiro depois do merge, e Base
+	// é o hash do arquivo no momento do plano ("" se ele não existia).
+	Key    string
+	Base   string
+	SHA256 string // hash do conteúdo final (ou do arquivo removido)
 }
 
 // Target é uma combinação agente+módulo tocada pelo plano.
@@ -82,6 +88,9 @@ func (p *Plan) Changes() int {
 	}
 	return n
 }
+
+// ErrStale é devolvido por Apply quando uma config mudou entre o plano e a aplicação.
+var ErrStale = errors.New("a configuração mudou desde o plano; nada foi gravado nela, rode de novo")
 
 // ErrConflicts é devolvido por Apply quando o plano tem conflitos.
 var ErrConflicts = errors.New("o plano tem conflitos; nada foi alterado")
@@ -152,6 +161,10 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				}
 			case manifest.ModuleRules:
 				if err := planRules(plan, lock, p, ad, req.Scope, req.Env); err != nil {
+					return nil, err
+				}
+			case manifest.ModuleMCP:
+				if err := planMCP(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
 			default:
@@ -237,6 +250,108 @@ func planRules(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 	}
 	plan.Notes = append(plan.Notes, notes...)
 	return nil
+}
+
+// planMCP faz o merge dos servidores do pack na config do agente, servidor por servidor.
+func planMCP(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapter, scope adapter.Scope, env adapter.Env) error {
+	ma, ok := ad.(adapter.MCPAdapter)
+	if !ok {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: mcp ainda não é suportado pelo adaptador %s (pulado)", ad.ID(), ad.Name()))
+		return nil
+	}
+	cfg, err := ma.MCPConfig(scope, env)
+	if err != nil {
+		return fmt.Errorf("%s: %w", ad.ID(), err)
+	}
+	defs, err := p.MCPServers()
+	if err != nil {
+		return err
+	}
+	doc, base, err := openConfig(cfg.Path, cfg.Format, cfg.Section)
+	if err != nil {
+		plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %v", ad.ID(), err))
+		return nil
+	}
+	plan.Targets = append(plan.Targets, Target{Agent: ad.ID(), Module: manifest.ModuleMCP, Root: cfg.Path})
+
+	prev, _ := lock.Find(p.Name, ad.ID(), string(manifest.ModuleMCP))
+	owned := map[string]string{}
+	for _, k := range prev.Keys {
+		if k.Path == cfg.Path {
+			owned[k.Name] = k.SHA256
+		}
+	}
+	var acts []Action
+	planned := map[string]bool{}
+	for _, name := range p.Modules.MCP {
+		val, err := ma.MCPServer(defs[name], p.Dir)
+		if err != nil {
+			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: servidor %s pulado: %v", ad.ID(), name, err))
+			continue
+		}
+		want, err := doc.HashOf(name, val)
+		if err != nil {
+			return fmt.Errorf("%s: %s: %w", ad.ID(), name, err)
+		}
+		planned[name] = true
+		a := Action{Agent: ad.ID(), Module: manifest.ModuleMCP, Path: cfg.Path, Key: name, SHA256: want, Base: base}
+		cur, exists := doc.Hash(name)
+		switch {
+		case !exists:
+			a.Op = OpCreate
+		case cur == want:
+			a.Op = OpUnchanged
+		case owned[name] == cur:
+			a.Op = OpUpdate
+		default:
+			plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: o servidor %q já existe em %s e não foi instalado pelo atlana (ou foi editado depois)", ad.ID(), name, cfg.Path))
+			continue
+		}
+		if a.Op != OpUnchanged {
+			if err := doc.Set(name, val); err != nil {
+				return err
+			}
+		}
+		acts = append(acts, a)
+	}
+	for _, k := range prev.Keys {
+		if k.Path != cfg.Path || planned[k.Name] {
+			continue
+		}
+		cur, exists := doc.Hash(k.Name)
+		switch {
+		case !exists:
+		case cur == k.SHA256:
+			doc.Delete(k.Name)
+			acts = append(acts, Action{Op: OpRemove, Agent: ad.ID(), Module: manifest.ModuleMCP, Path: cfg.Path, Key: k.Name, SHA256: cur, Base: base})
+		default:
+			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q saiu do pack mas foi editado; mantido", ad.ID(), k.Name))
+		}
+	}
+	content := doc.Bytes()
+	for i := range acts {
+		acts[i].Content = content
+	}
+	plan.Actions = append(plan.Actions, acts...)
+	return nil
+}
+
+// openConfig lê e abre uma config de agente; devolve também o hash do arquivo ("" se não existe).
+func openConfig(path, format, section string) (configmerge.Doc, string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, "", err
+	}
+	base := ""
+	if err == nil {
+		h := sha256.Sum256(raw)
+		base = hex.EncodeToString(h[:])
+	}
+	doc, err := configmerge.Parse(configmerge.Format(format), raw, section)
+	if err != nil {
+		return nil, "", fmt.Errorf("não dá para editar %s: %w", path, err)
+	}
+	return doc, base, nil
 }
 
 // filePlanner decide criar/atualizar/igual/conflito por arquivo e remove o que saiu do pack.
@@ -335,11 +450,74 @@ func PlanUninstall(pack string, agents []string, scope adapter.Scope, env adapte
 				plan.Actions = append(plan.Actions, Action{Op: OpRemove, Agent: e.Agent, Module: manifest.Module(e.Module), Path: f.Path, SHA256: cur})
 			}
 		}
+		if err := planKeyRemovals(plan, lock, e, scope, env); err != nil {
+			return nil, err
+		}
 	}
 	if len(plan.Targets) == 0 {
 		return nil, fmt.Errorf("o pack %q não está instalado no escopo %s (lock: %s)", pack, scope, plan.LockPath)
 	}
 	return plan, nil
+}
+
+// planKeyRemovals tira das configs os itens que a entrada mantém, se ninguém os editou.
+func planKeyRemovals(plan *Plan, lock *lockfile.Lock, e lockfile.Entry, scope adapter.Scope, env adapter.Env) error {
+	if len(e.Keys) == 0 {
+		return nil
+	}
+	cfg, err := mcpConfigFor(e, scope, env)
+	if err != nil {
+		return err
+	}
+	byPath := map[string][]lockfile.Key{}
+	var paths []string
+	for _, k := range e.Keys {
+		if _, seen := byPath[k.Path]; !seen {
+			paths = append(paths, k.Path)
+		}
+		byPath[k.Path] = append(byPath[k.Path], k)
+	}
+	for _, path := range paths {
+		doc, base, err := openConfig(path, cfg.Format, cfg.Section)
+		if err != nil {
+			plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %v", e.Agent, err))
+			continue
+		}
+		var acts []Action
+		for _, k := range byPath[path] {
+			cur, exists := doc.Hash(k.Name)
+			switch {
+			case !exists:
+				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q já não está em %s", e.Agent, k.Name, path))
+			case cur != k.SHA256:
+				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q em %s foi editado depois da instalação; mantido", e.Agent, k.Name, path))
+			case len(lock.KeyOwners(path, k.Name)) > 1:
+				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q também pertence a outro pack; mantido", e.Agent, k.Name))
+			default:
+				doc.Delete(k.Name)
+				acts = append(acts, Action{Op: OpRemove, Agent: e.Agent, Module: manifest.Module(e.Module), Path: path, Key: k.Name, SHA256: cur, Base: base})
+			}
+		}
+		content := doc.Bytes()
+		for i := range acts {
+			acts[i].Content = content
+		}
+		plan.Actions = append(plan.Actions, acts...)
+	}
+	return nil
+}
+
+// mcpConfigFor pergunta ao adaptador o formato e a seção da config de uma entrada do lock.
+func mcpConfigFor(e lockfile.Entry, scope adapter.Scope, env adapter.Env) (adapter.MCPConfig, error) {
+	ad, err := adapter.Get(e.Agent)
+	if err != nil {
+		return adapter.MCPConfig{}, err
+	}
+	ma, ok := ad.(adapter.MCPAdapter)
+	if !ok || manifest.Module(e.Module) != manifest.ModuleMCP {
+		return adapter.MCPConfig{}, fmt.Errorf("%s: não sei editar a config de %s", e.Agent, e.Module)
+	}
+	return ma.MCPConfig(scope, env)
 }
 
 // Apply executa o plano e atualiza o lockfile. Recusa planos com conflitos.
@@ -356,7 +534,39 @@ func Apply(plan *Plan, now time.Time) error {
 		roots[t.Agent+"|"+string(t.Module)] = t.Root
 	}
 
+	// Configs editadas por merge: confere se ninguém mexeu desde o plano e grava uma vez.
+	merged := map[string]bool{}
 	for _, a := range plan.Actions {
+		if a.Key == "" || a.Op == OpUnchanged || merged[a.Path] {
+			continue
+		}
+		merged[a.Path] = true
+		cur, err := hashFile(a.Path)
+		if errors.Is(err, fs.ErrNotExist) {
+			cur, err = "", nil
+		}
+		if err != nil {
+			return err
+		}
+		if cur != a.Base {
+			return fmt.Errorf("%w: %s", ErrStale, a.Path)
+		}
+	}
+	for path := range merged {
+		for _, a := range plan.Actions {
+			if a.Path == path && a.Key != "" {
+				if err := writeConfig(path, a.Content); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+
+	for _, a := range plan.Actions {
+		if a.Key != "" {
+			continue
+		}
 		switch a.Op {
 		case OpCreate, OpUpdate:
 			if a.Content != nil {
@@ -386,11 +596,16 @@ func Apply(plan *Plan, now time.Time) error {
 			InstalledAt: now.UTC().Format(time.RFC3339),
 		}
 		for _, a := range plan.Actions {
-			if a.Agent == t.Agent && a.Module == t.Module && a.Op != OpRemove {
+			if a.Agent != t.Agent || a.Module != t.Module || a.Op == OpRemove {
+				continue
+			}
+			if a.Key != "" {
+				e.Keys = append(e.Keys, lockfile.Key{Path: a.Path, Name: a.Key, SHA256: a.SHA256})
+			} else {
 				e.Files = append(e.Files, lockfile.File{Path: a.Path, SHA256: a.SHA256})
 			}
 		}
-		if len(e.Files) == 0 {
+		if len(e.Files) == 0 && len(e.Keys) == 0 {
 			lock.Delete(plan.PackName, t.Agent, string(t.Module))
 		} else {
 			lock.Put(e)
@@ -438,11 +653,51 @@ func Status(env adapter.Env) ([]StatusEntry, error) {
 					se.States[f.Path] = StateOK
 				}
 			}
+			if err := keyStates(&se, e, scope, env); err != nil {
+				return nil, err
+			}
 			out = append(out, se)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Entry.Key() < out[j].Entry.Key() })
 	return out, nil
+}
+
+// keyStates preenche o estado de cada item mantido em config (chave "<arquivo>#<nome>").
+func keyStates(se *StatusEntry, e lockfile.Entry, scope adapter.Scope, env adapter.Env) error {
+	if len(e.Keys) == 0 {
+		return nil
+	}
+	cfg, err := mcpConfigFor(e, scope, env)
+	if err != nil {
+		return err
+	}
+	docs := map[string]configmerge.Doc{}
+	for _, k := range e.Keys {
+		id := k.Path + "#" + k.Name
+		doc, ok := docs[k.Path]
+		if !ok {
+			raw, err := os.ReadFile(k.Path)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			if doc, err = configmerge.Parse(configmerge.Format(cfg.Format), raw, cfg.Section); err != nil {
+				se.States[id] = StateModified
+				continue
+			}
+			docs[k.Path] = doc
+		}
+		cur, exists := doc.Hash(k.Name)
+		switch {
+		case !exists:
+			se.States[id] = StateMissing
+		case cur != k.SHA256:
+			se.States[id] = StateModified
+		default:
+			se.States[id] = StateOK
+		}
+	}
+	return nil
 }
 
 func hashFile(path string) (string, error) {
@@ -474,6 +729,15 @@ func copyFile(src, dst string) error {
 		mode = 0o755
 	}
 	return writeAtomic(dst, in, mode)
+}
+
+// writeConfig grava uma config editada por merge, mantendo as permissões do arquivo.
+func writeConfig(dst string, content []byte) error {
+	mode := fs.FileMode(0o644)
+	if st, err := os.Stat(dst); err == nil {
+		mode = st.Mode().Perm()
+	}
+	return writeAtomic(dst, bytes.NewReader(content), mode)
 }
 
 // writeFile grava conteúdo gerado de forma atômica.

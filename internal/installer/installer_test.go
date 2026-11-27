@@ -431,3 +431,156 @@ func TestGrokSkipsRules(t *testing.T) {
 		t.Fatalf("grok: %v %v", ops(p), p.Notes)
 	}
 }
+
+func setupMCP(t *testing.T) fixture {
+	t.Helper()
+	f := setup(t, "alpha")
+	write(t, filepath.Join(f.pack.Dir, "mcp.json"), `{"mcpServers": {"demo": {"command": "npx", "args": ["-y", "demo"], "env": {"TOKEN": "${TOKEN}"}}}}`)
+	f.pack.Modules.MCP = []string{"demo"}
+	return f
+}
+
+var onlyMCP = []manifest.Module{manifest.ModuleMCP}
+
+func TestMCPMergeKeepsUserConfig(t *testing.T) {
+	f := setupMCP(t)
+	claudeJSON := filepath.Join(f.env.Home, ".claude.json")
+	write(t, claudeJSON, `{"numStartups": 7, "mcpServers": {"mine": {"command": "mine"}}, "projects": {}}`)
+	if err := os.Chmod(claudeJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codexTOML := filepath.Join(f.env.Home, ".codex", "config.toml")
+	write(t, codexTOML, "model = \"o3\"\n")
+
+	p := f.planScope(t, adapter.ScopeUser, onlyMCP, "claude", "codex", "cursor", "gemini")
+	if ops(p)[OpCreate] != 4 || len(p.Conflicts) != 0 {
+		t.Fatalf("plano: %v %v %v", ops(p), p.Conflicts, p.Notes)
+	}
+	if b, _ := os.ReadFile(claudeJSON); strings.Contains(string(b), "demo") {
+		t.Fatal("o plano não pode escrever")
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(claudeJSON)
+	for _, want := range []string{`"numStartups": 7`, `"mine"`, `"demo"`, `"projects"`, `"${TOKEN}"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf(".claude.json sem %s:\n%s", want, b)
+		}
+	}
+	if st, _ := os.Stat(claudeJSON); st.Mode().Perm() != 0o600 {
+		t.Errorf("permissão mudou para %v", st.Mode().Perm())
+	}
+	if b, _ := os.ReadFile(codexTOML); !strings.HasPrefix(string(b), "model = \"o3\"\n\n[mcp_servers.demo]\n") || !strings.Contains(string(b), `env_vars = ["TOKEN"]`) {
+		t.Fatalf("config.toml:\n%s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.Home, ".cursor", "mcp.json")); !strings.Contains(string(b), "${env:TOKEN}") {
+		t.Fatalf("cursor mcp.json:\n%s", b)
+	}
+
+	lock, _ := lockfile.Load(p.LockPath)
+	if e, ok := lock.Find("demo", "claude", "mcp"); !ok || len(e.Keys) != 1 || len(e.Files) != 0 {
+		t.Fatalf("lock deveria guardar a chave, não o arquivo: %+v", e)
+	}
+	if again := f.planScope(t, adapter.ScopeUser, onlyMCP, "claude", "codex", "cursor", "gemini"); again.Changes() != 0 {
+		t.Fatalf("reinstalar deveria ser idempotente: %v", ops(again))
+	}
+
+	st, err := Status(f.env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range st {
+		for id, s := range e.States {
+			if s != StateOK {
+				t.Errorf("%s: %s", id, s)
+			}
+		}
+	}
+
+	u, err := PlanUninstall("demo", nil, adapter.ScopeUser, f.env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(claudeJSON)
+	if strings.Contains(string(b), `"demo"`) || !strings.Contains(string(b), `"mine"`) || !strings.Contains(string(b), `"numStartups": 7`) {
+		t.Fatalf("uninstall deveria tirar só o nosso servidor:\n%s", b)
+	}
+	if b, _ := os.ReadFile(codexTOML); string(b) != "model = \"o3\"\n" {
+		t.Fatalf("config.toml depois do uninstall: %q", b)
+	}
+}
+
+func TestMCPConflictWithUserServer(t *testing.T) {
+	f := setupMCP(t)
+	write(t, filepath.Join(f.env.WorkDir, ".mcp.json"), `{"mcpServers": {"demo": {"command": "outro"}}}`)
+	p := f.planScope(t, adapter.ScopeProject, onlyMCP, "claude")
+	if len(p.Conflicts) != 1 || !errors.Is(Apply(p, now), ErrConflicts) {
+		t.Fatalf("esperava conflito: %v", p.Conflicts)
+	}
+}
+
+func TestMCPInvalidConfigIsConflict(t *testing.T) {
+	f := setupMCP(t)
+	write(t, filepath.Join(f.env.Home, ".gemini", "settings.json"), `{ // comentário
+}`)
+	p := f.planScope(t, adapter.ScopeUser, onlyMCP, "gemini")
+	if len(p.Conflicts) != 1 || !strings.Contains(p.Conflicts[0], "não dá para editar") {
+		t.Fatalf("JSON inválido deveria virar conflito: %v", p.Conflicts)
+	}
+}
+
+func TestMCPUpdateEditedAndStale(t *testing.T) {
+	f := setupMCP(t)
+	cfg := filepath.Join(f.env.Home, ".cursor", "mcp.json")
+	if err := Apply(f.planScope(t, adapter.ScopeUser, onlyMCP, "cursor"), now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nova versão do pack: o servidor é nosso e intacto, então atualiza.
+	write(t, filepath.Join(f.pack.Dir, "mcp.json"), `{"mcpServers": {"demo": {"command": "npx", "args": ["-y", "demo@2"]}}}`)
+	p := f.planScope(t, adapter.ScopeUser, onlyMCP, "cursor")
+	if ops(p)[OpUpdate] != 1 {
+		t.Fatalf("esperava atualizar: %v %v", ops(p), p.Conflicts)
+	}
+
+	// Alguém (o próprio agente) grava a config entre o plano e o apply.
+	b, _ := os.ReadFile(cfg)
+	write(t, cfg, strings.Replace(string(b), "{", `{"theme": "dark",`, 1))
+	if err := Apply(p, now); !errors.Is(err, ErrStale) {
+		t.Fatalf("esperava ErrStale, veio %v", err)
+	}
+	if b, _ := os.ReadFile(cfg); !strings.Contains(string(b), `"theme": "dark"`) {
+		t.Fatal("a edição concorrente não pode ser perdida")
+	}
+
+	// A pessoa edita o nosso servidor: uninstall mantém e avisa.
+	write(t, cfg, `{"mcpServers": {"demo": {"command": "editado"}}}`)
+	u, _ := PlanUninstall("demo", nil, adapter.ScopeUser, f.env)
+	if ops(u)[OpRemove] != 0 || len(u.Notes) != 1 || !strings.Contains(u.Notes[0], "editado") {
+		t.Fatalf("uninstall: %v %v", ops(u), u.Notes)
+	}
+}
+
+func TestMCPServerRemovedFromPack(t *testing.T) {
+	f := setupMCP(t)
+	write(t, filepath.Join(f.pack.Dir, "mcp.json"), `{"mcpServers": {"demo": {"command": "a"}, "extra": {"command": "b"}}}`)
+	f.pack.Modules.MCP = []string{"demo", "extra"}
+	if err := Apply(f.planScope(t, adapter.ScopeUser, onlyMCP, "gemini"), now); err != nil {
+		t.Fatal(err)
+	}
+	f.pack.Modules.MCP = []string{"demo"}
+	p := f.planScope(t, adapter.ScopeUser, onlyMCP, "gemini")
+	if ops(p)[OpRemove] != 1 || ops(p)[OpUnchanged] != 1 {
+		t.Fatalf("esperava remover extra: %v", ops(p))
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.Home, ".gemini", "settings.json")); strings.Contains(string(b), "extra") {
+		t.Fatalf("extra deveria ter saído:\n%s", b)
+	}
+}

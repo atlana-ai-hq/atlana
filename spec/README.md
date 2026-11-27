@@ -8,7 +8,7 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 |---|---|---|
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
 | Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex) |
-| MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves), instalação futura |
+| MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado (existência), instalação futura |
 | Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado (existência), instalação futura |
 | Commands | formato Atlana (`commands/<nome>.md`) | validado (existência), instalação futura |
@@ -109,9 +109,10 @@ Toda implementação da CLI precisa respeitar:
 
 1. **Plano antes de aplicar.** `install` e `uninstall` mostram cada arquivo que vão criar, atualizar ou remover. `--dry-run` para aí; sem terminal, só aplica com `--yes`.
 2. **Nunca sobrescrever o que não é do Atlana.** Um arquivo que já existe só é atualizado se o `atlana.lock` diz que é nosso **e** o hash bate (ninguém editou). Senão é conflito e nada é escrito.
-3. **Lockfile.** `~/.config/atlana/atlana.lock` (escopo `user`, respeita `XDG_CONFIG_HOME`) ou `./atlana.lock` (escopo `project`), com pack, versão, origem, agente, módulo e `sha256` de cada arquivo.
+3. **Lockfile.** `~/.config/atlana/atlana.lock` (escopo `user`, respeita `XDG_CONFIG_HOME`) ou `./atlana.lock` (escopo `project`), com pack, versão, origem, agente, módulo e `sha256` de cada arquivo. Itens mantidos dentro de arquivos que não são do Atlana (servidores MCP) ficam em `keys`: caminho, nome e `sha256` do valor normalizado.
 4. **Uninstall exato.** Remove só arquivos do lock cujo hash ainda bate. Arquivos editados são mantidos e avisados.
-5. **Segredos nunca são gravados.** Manifestos listam nomes de variáveis; merges de config (JSON/TOML) futuros vão referenciar variáveis, nunca valores.
+5. **Segredos nunca são gravados.** Manifestos listam nomes de variáveis, e em `mcp.json` os valores de `env` e `headers` só podem ser `${NOME}` (headers aceitam também `Bearer ${NOME}`). Valor literal é erro no `validate`.
+6. **Merge não destrutivo.** Configs de agentes são editadas servidor a servidor; as outras chaves e servidores ficam como estavam. Se o arquivo mudou entre o plano e o apply, nada é gravado nele.
 
 ## 7. Onde cada agente recebe skills (v0.1)
 
@@ -137,3 +138,16 @@ Cada arquivo de `modules.rules` é instalado como arquivo próprio do Atlana. O 
 | Codex CLI (`codex`) | `$CODEX_HOME/atlana/atlana-<pack>/<arquivo>` (padrão `~/.codex`) | `.codex/atlana/atlana-<pack>/<arquivo>` | manual, no `AGENTS.md` |
 
 No `.mdc` do Cursor, o `<slug>` é o caminho sem extensão com `/` trocado por `-`, e um frontmatter do arquivo de origem é substituído pelo do Cursor.
+
+## 9. Onde cada agente recebe servidores MCP (v0.1)
+
+Cada servidor de `modules.mcp` entra por merge (ADR 0004). `${PLUGIN_ROOT}` vira o diretório do pack.
+
+| Agente | `--scope user` | `--scope project` | Tradução |
+|---|---|---|---|
+| Claude Code (`claude`) | `~/.claude.json` → `mcpServers` | `.mcp.json` → `mcpServers` | igual; `url` sem `type` ganha `type: http` |
+| Cursor (`cursor`) | `~/.cursor/mcp.json` → `mcpServers` | `.cursor/mcp.json` → `mcpServers` | `${VAR}` vira `${env:VAR}` |
+| Gemini CLI (`gemini`) | `~/.gemini/settings.json` → `mcpServers` | `.gemini/settings.json` → `mcpServers` | `url` vira `httpUrl` (exceto `type: sse`) |
+| Codex CLI (`codex`) | `$CODEX_HOME/config.toml` (padrão `~/.codex`) → `[mcp_servers.<nome>]` | `.codex/config.toml` | `env` vira `env_vars` (a variável precisa ter o mesmo nome); `Authorization: Bearer ${X}` vira `bearer_token_env_var`; outros headers, `env_http_headers` |
+
+No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_servers]`, inline ou chave com ponto), a instalação para com conflito.

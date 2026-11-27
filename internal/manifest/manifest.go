@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -337,23 +338,89 @@ func checkContent(p *Pack, rep *Report) {
 
 func checkMCP(p *Pack, rep *Report) {
 	file := filepath.Join(p.Dir, "mcp.json")
-	raw, err := os.ReadFile(file)
-	if err != nil {
+	if !isFile(file) {
 		rep.errorf(filepath.Join(p.Dir, FileName), "mcp: módulo declarado, mas mcp.json não existe")
 		return
 	}
-	var doc struct {
-		MCPServers map[string]json.RawMessage `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		rep.errorf(file, "JSON inválido: %v", err)
+	servers, err := p.MCPServers()
+	if err != nil {
+		rep.errorf(file, "%v", err)
 		return
 	}
+	declaredEnv := map[string]bool{}
+	for _, e := range p.Requires.Env {
+		declaredEnv[e] = true
+	}
 	for _, k := range p.Modules.MCP {
-		if _, ok := doc.MCPServers[k]; !ok {
+		s, ok := servers[k]
+		if !ok {
 			rep.errorf(file, "mcpServers não tem a chave %q declarada em modules.mcp", k)
+			continue
+		}
+		_, hasCmd := s["command"].(string)
+		_, hasURL := s["url"].(string)
+		if hasCmd == hasURL {
+			rep.errorf(file, "mcpServers.%s: precisa de exatamente um entre command e url", k)
+		}
+		for _, field := range []string{"env", "headers"} {
+			raw, ok := s[field]
+			if !ok {
+				continue
+			}
+			m, ok := raw.(map[string]any)
+			if !ok {
+				rep.errorf(file, "mcpServers.%s.%s precisa ser um objeto", k, field)
+				continue
+			}
+			for name, v := range m {
+				str, _ := v.(string)
+				vars, ok := SecretRefs(field, str)
+				if !ok {
+					rep.errorf(file, "mcpServers.%s.%s.%s: use só referência a variável (${NOME}%s), nunca o valor", k, field, name, map[bool]string{true: " ou Bearer ${NOME}", false: ""}[field == "headers"])
+					continue
+				}
+				for _, vr := range vars {
+					if !declaredEnv[vr] {
+						rep.warnf(file, "mcpServers.%s.%s.%s usa ${%s}, que não está em requires.env", k, field, name, vr)
+					}
+				}
+			}
 		}
 	}
+}
+
+var (
+	envRef    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
+	bearerRef = regexp.MustCompile(`^Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
+)
+
+// SecretRefs valida um valor de env ou header: só "${NOME}" (e, em headers,
+// "Bearer ${NOME}"). Devolve os nomes de variáveis citados.
+func SecretRefs(field, v string) ([]string, bool) {
+	if m := envRef.FindStringSubmatch(v); m != nil {
+		return []string{m[1]}, true
+	}
+	if field == "headers" {
+		if m := bearerRef.FindStringSubmatch(v); m != nil {
+			return []string{m[1]}, true
+		}
+	}
+	return nil, false
+}
+
+// MCPServers lê mcp.json do pack (formato Agent Plugins: mcpServers).
+func (p *Pack) MCPServers() (map[string]map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(p.Dir, "mcp.json"))
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		MCPServers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("mcp.json inválido: %w", err)
+	}
+	return doc.MCPServers, nil
 }
 
 // Find procura packs (diretórios com atlana.yaml) a partir de root.
