@@ -1,0 +1,62 @@
+# Release do atlana com GoReleaser v2 (https://goreleaser.com).
+# Teste local, sem publicar: goreleaser release --snapshot --clean
+version: 2
+
+project_name: atlana
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+    - go run ./cmd/atlana validate packs
+
+builds:
+  - id: atlana
+    main: ./cmd/atlana
+    binary: atlana
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/atlana-ai-hq/atlana/internal/cli.Version={{ .Version }}
+
+archives:
+  - id: atlana
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Cask no tap atlana-ai-hq/homebrew-tap (o repositório precisa existir).
+# O token vem de HOMEBREW_TAP_GITHUB_TOKEN no CI; nunca fica neste arquivo.
+# No macOS, o binário sem assinatura/notarização é bloqueado pelo Gatekeeper;
+# assine e notarize (seção notarize do GoReleaser) antes do primeiro release.
+homebrew_casks:
+  - name: atlana
+    repository:
+      owner: atlana-ai-hq
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/atlana-ai-hq/atlana
+    description: Um formato, todos os agentes. Instala skills, rules, MCP, subagents e hooks em agentes de IA.
+    license: MIT
+    binaries: [atlana]

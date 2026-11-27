@@ -78,6 +78,8 @@ modules:
   skills: [conventional-commit-message]
 ```
 
+Para criar o seu, parta de [`templates/pack`](templates/pack) e siga o [guia de autoria](docs/autoria.md). Já tem skills e regras soltas nos agentes? Veja o [guia de migração](docs/migracao.md).
+
 Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está em [`spec/schemas/atlana.schema.json`](spec/schemas/atlana.schema.json).
 
 ## Suporte atual
@@ -112,7 +114,8 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] Hooks com dispatcher de eventos genéricos e subagents (Claude Code, Gemini CLI)
 - [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
 - [x] Origens `github:owner/repo//caminho@ref` e registry local (`atlana registry`)
-- [ ] Releases com binários e `brew tap`
+- [x] `atlana scan`, configuração de release (GoReleaser + Homebrew), template e guias de autoria/migração
+- [ ] Primeiro release publicado (tap, assinatura no macOS, workflow)
 
 ## Desenvolvimento
 

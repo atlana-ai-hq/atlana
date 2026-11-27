@@ -251,3 +251,21 @@ func TestHookValidation(t *testing.T) {
 		t.Error("run sem +x deveria falhar")
 	}
 }
+
+func TestTemplateIsValidAndUsesEveryModule(t *testing.T) {
+	p, rep, err := Load(filepath.Join("..", "..", "templates", "pack"))
+	if err != nil {
+		t.Fatalf("o template precisa passar no validate: %v %v", err, rep.Issues)
+	}
+	if len(rep.Issues) != 0 {
+		t.Errorf("o template não deve ter avisos: %v", rep.Issues)
+	}
+	for _, m := range []Module{ModuleRules, ModuleSkills, ModuleAgents, ModuleHooks} {
+		if len(p.Modules.Items(m)) == 0 {
+			t.Errorf("o template deveria mostrar %s", m)
+		}
+	}
+	if _, err := p.MCPServers(); err != nil {
+		t.Errorf("mcp.json do template: %v", err)
+	}
+}

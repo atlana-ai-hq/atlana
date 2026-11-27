@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "exemplo": {
+      "command": "${PLUGIN_ROOT}/bin/servidor-exemplo",
+      "args": ["--modo", "leitura"],
+      "env": { "EXEMPLO_TOKEN": "${EXEMPLO_TOKEN}" }
+    }
+  }
+}

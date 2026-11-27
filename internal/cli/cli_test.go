@@ -170,3 +170,32 @@ func TestInstallBadFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestScanCommand(t *testing.T) {
+	app, out, errb := newApp(t)
+	root := app.Env.WorkDir
+	os.WriteFile(filepath.Join(root, "README.md"), []byte("feito na AcmeCorp\n"), 0o644)
+	if code := app.Run([]string{"scan"}); code != 0 || !strings.Contains(out.String(), "nenhum nome privado configurado") {
+		t.Fatalf("sem lista: %d %s %s", code, out, errb)
+	}
+	cfg := filepath.Join(app.Env.Home, ".config", "atlana")
+	os.MkdirAll(cfg, 0o755)
+	os.WriteFile(filepath.Join(cfg, "private-names.txt"), []byte("AcmeCorp\n"), 0o644)
+	out.Reset()
+	if code := app.Run([]string{"scan", "."}); code != 1 || !strings.Contains(out.String(), "README.md:1: nome privado #1 da lista") || strings.Contains(out.String(), "AcmeCorp") {
+		t.Fatalf("o relatório padrão não pode expor o nome: %d\n%s", code, out)
+	}
+	out.Reset()
+	app.Run([]string{"scan", "--show"})
+	if !strings.Contains(out.String(), `"AcmeCorp"`) {
+		t.Fatalf("--show:\n%s", out)
+	}
+}
+
+func TestRepoHasNothingPrivate(t *testing.T) {
+	app, out, errb := newApp(t)
+	repo, _ := filepath.Abs(filepath.Join("..", ".."))
+	if code := app.Run([]string{"scan", repo}); code != 0 {
+		t.Fatalf("o repo tem pack privado: %d\n%s%s", code, out, errb)
+	}
+}

@@ -1,0 +1,21 @@
+# Esqueleto de pack Atlana. Copie esta pasta, troque os nomes e rode:
+#   atlana validate .
+# Guia completo: docs/autoria.md
+apiVersion: atlana/v1alpha1
+kind: Pack
+name: meu-pack                 # minúsculas e hífens
+version: 0.1.0                 # SemVer
+description: Descreva em uma frase o que este pack oferece.
+license: MIT
+visibility: public             # private = nunca publicar em destino público
+authors: [seu-usuario]
+
+modules:
+  rules: [AGENTS.md]           # instruções gerais para o agente
+  skills: [exemplo-de-skill]   # pastas em skills/<nome>/SKILL.md
+  agents: [revisor]            # agents/<nome>.md
+  hooks: [proteger-plano]      # hooks/<nome>/hook.yaml (só instala com --only hooks)
+  mcp: []                      # chaves de mcp.json, ex.: [exemplo]
+
+requires:
+  env: []                      # só NOMES de variáveis usadas em mcp.json, ex.: [EXEMPLO_TOKEN]

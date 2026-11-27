@@ -22,6 +22,7 @@ import (
 	"github.com/atlana-ai-hq/atlana/internal/installer"
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
 	"github.com/atlana-ai-hq/atlana/internal/registry"
+	"github.com/atlana-ai-hq/atlana/internal/scan"
 	"github.com/atlana-ai-hq/atlana/internal/source"
 	"github.com/atlana-ai-hq/atlana/spec"
 )
@@ -61,6 +62,7 @@ Comandos:
   registry list [--all]         projetos do registry local (privados só com acesso)
   registry add <nome> <origem> [--private]
   registry remove <nome>
+  scan [caminho] [--show]       procura nomes privados (lista local) e packs privados antes de publicar
   hook dispatch [flags]         uso interno: chamado pelos agentes quando um hook dispara
 
 Flags de install/uninstall:
@@ -94,6 +96,8 @@ func (a *App) Run(args []string) int {
 		return a.hook(args[1:])
 	case "registry":
 		err = a.registry(args[1:])
+	case "scan":
+		err = a.scan(args[1:])
 	case "status":
 		err = a.status()
 	case "help", "--help", "-h":
@@ -656,4 +660,51 @@ func (a *App) registry(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrUsage, use)
+}
+
+// ErrFindings indica que o scan achou algo (exit 1).
+var ErrFindings = errors.New("o scan achou conteúdo que não pode ir para o público")
+
+func (a *App) scan(args []string) error {
+	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	show := fs.Bool("show", false, "mostra o nome achado (não use em CI público: o log é público)")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil || len(pos) > 1 {
+		return fmt.Errorf("%w: use `atlana scan [caminho] [--show]`", ErrUsage)
+	}
+	root := a.Env.WorkDir
+	if len(pos) == 1 {
+		root = pos[0]
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(a.Env.WorkDir, root)
+		}
+	}
+	names, err := scan.LoadNames(filepath.Dir(a.registryPath()), a.Env.Getenv)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		fmt.Fprintf(a.Stdout, "aviso: nenhum nome privado configurado (%s ou %s); só os packs privados são checados.\n",
+			filepath.Join(filepath.Dir(a.registryPath()), scan.NamesFile), scan.EnvVar)
+	}
+	found, err := scan.Scan(root, names)
+	if err != nil {
+		return err
+	}
+	for _, f := range found {
+		switch {
+		case f.Kind == "pack-privado":
+			fmt.Fprintf(a.Stdout, "%s: pack com visibility: private num repo que vai ser público\n", f.File)
+		case *show:
+			fmt.Fprintf(a.Stdout, "%s:%d: nome privado %q\n", f.File, f.Line, f.Name)
+		default:
+			fmt.Fprintf(a.Stdout, "%s:%d: nome privado #%d da lista\n", f.File, f.Line, f.Index+1)
+		}
+	}
+	if len(found) > 0 {
+		return fmt.Errorf("%w (%d achado(s))", ErrFindings, len(found))
+	}
+	fmt.Fprintf(a.Stdout, "ok: nada privado em %s (%d nome(s) checado(s))\n", root, len(names))
+	return nil
 }

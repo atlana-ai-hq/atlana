@@ -1,0 +1,8 @@
+name: proteger-plano
+event: pre_tool                # pre_tool | post_tool | prompt_submit | session_start | stop
+match:
+  tool: [edit, write]          # shell | edit | write | read | mcp
+  path: [".plan/**"]
+run: ./run.sh                  # recebe JSON normalizado no stdin; exit 2 = negar
+timeout: 10
+fallback: rule                 # agente sem hooks: rule (usa rule.md) | skip | fail

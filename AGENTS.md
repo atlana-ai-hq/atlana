@@ -18,6 +18,9 @@ CLI em Go (`cmd/atlana`) que valida packs no formato Atlana e os instala em agen
 - `internal/hookrun/`: dispatcher que os agentes chamam nos hooks (`atlana hook dispatch`).
 - `internal/source/`: origens `github:owner/repo//caminho@ref`, buscadas com o git da pessoa para um cache.
 - `internal/registry/`: registry local do Hub (`hub.yaml`).
+- `internal/scan/`: `atlana scan`, nomes privados (lista local, nunca no repo) e packs `private`.
+- `templates/pack/`: esqueleto de pack com todos os módulos; precisa passar em `atlana validate`.
+- `docs/`: guias de autoria, migração e release (`docs/autoria.md`, `docs/migracao.md`, `docs/release.md`).
 - `packs/`: packs de exemplo; todos precisam passar em `atlana validate`.
 - `docs/adr/`: decisões de arquitetura.
 
@@ -28,6 +31,8 @@ gofmt -l .                       # precisa sair vazio
 go vet ./...
 go test -race ./...
 go run ./cmd/atlana validate packs
+go run ./cmd/atlana validate templates
+go run ./cmd/atlana scan .         # nomes privados de ~/.config/atlana/private-names.txt
 ```
 
 ## Regras
