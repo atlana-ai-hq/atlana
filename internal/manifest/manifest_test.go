@@ -204,3 +204,50 @@ func TestMCPSecretsAreOnlyReferences(t *testing.T) {
 		t.Errorf("referências válidas não deveriam gerar erro: %+v", rep.Issues)
 	}
 }
+
+func TestSubagentValidation(t *testing.T) {
+	m := validManifest + "  agents: [planner, bad]\n"
+	dir := newPack(t, m, validSkill)
+	writeFile(t, filepath.Join(dir, "agents", "planner.md"), "---\nname: planner\ndescription: Planeja.\ntools: [read, search, shell:readonly]\nmodel: fast\n---\n\nVocê planeja.\n")
+	writeFile(t, filepath.Join(dir, "agents", "bad.md"), "---\nname: other\ndescription: \"\"\ntools: [teleport]\nmodel: huge\n---\n")
+	p, rep, _ := Load(dir)
+	for _, want := range []string{`name "other" precisa ser igual`, "description é obrigatório", `tool "teleport" desconhecida`, `model "huge" inválido`, "corpo (prompt do subagent) está vazio"} {
+		if !hasIssue(rep, want) {
+			t.Errorf("faltou %q: %+v", want, rep.Issues)
+		}
+	}
+	if hasIssue(rep, "planner.md") {
+		t.Errorf("planner é válido: %+v", rep.Issues)
+	}
+	s, err := p.Subagent("planner")
+	if err != nil || s.Model != "fast" || s.Body != "Você planeja.\n" || len(s.Tools) != 3 {
+		t.Fatalf("subagent: %+v %v", s, err)
+	}
+}
+
+func TestHookValidation(t *testing.T) {
+	m := validManifest + "  hooks: [guard, bad]\n"
+	dir := newPack(t, m, validSkill)
+	writeFile(t, filepath.Join(dir, "hooks", "guard", "hook.yaml"), "name: guard\nevent: pre_tool\nmatch:\n  tool: [edit, write]\n  path: [\".plan/**\"]\nrun: ./run.sh\nfallback: rule\n")
+	writeFile(t, filepath.Join(dir, "hooks", "guard", "run.sh"), "#!/bin/sh\nexit 0\n")
+	os.Chmod(filepath.Join(dir, "hooks", "guard", "run.sh"), 0o755)
+	writeFile(t, filepath.Join(dir, "hooks", "guard", "rule.md"), "Não edite .plan/.\n")
+	writeFile(t, filepath.Join(dir, "hooks", "bad", "hook.yaml"), "name: bad\nevent: stop\nmatch:\n  tool: [fly]\nrun: ../escape.sh\ntimeout: 99\nfallback: rule\n")
+	_, rep, _ := Load(dir)
+	for _, want := range []string{`match.tool "fly" inválido`, "match só vale para pre_tool", `run "../escape.sh"`, "timeout precisa", "fallback: rule precisa de hooks/bad/rule.md"} {
+		if !hasIssue(rep, want) {
+			t.Errorf("faltou %q: %+v", want, rep.Issues)
+		}
+	}
+	for _, is := range rep.Issues {
+		if strings.Contains(is.File, "guard") {
+			t.Errorf("guard é válido: %v", is)
+		}
+	}
+
+	writeFile(t, filepath.Join(dir, "hooks", "guard", "run.sh"), "#!/bin/sh\n")
+	os.Chmod(filepath.Join(dir, "hooks", "guard", "run.sh"), 0o644)
+	if _, rep, _ := Load(dir); !hasIssue(rep, "precisa ser executável") {
+		t.Error("run sem +x deveria falhar")
+	}
+}

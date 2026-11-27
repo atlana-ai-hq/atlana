@@ -132,9 +132,15 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 	modules := req.Modules
 	if !explicit {
 		for _, m := range manifest.AllModules {
-			if len(p.Modules.Items(m)) > 0 {
-				modules = append(modules, m)
+			if len(p.Modules.Items(m)) == 0 {
+				continue
 			}
+			if m == manifest.ModuleHooks {
+				// Hooks rodam comandos na máquina: nunca entram sem pedido explícito.
+				plan.Notes = append(plan.Notes, "o pack tem hooks; eles só são instalados com --only hooks")
+				continue
+			}
+			modules = append(modules, m)
 		}
 	}
 
@@ -150,7 +156,7 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				}
 				continue
 			}
-			if !ad.Supports(m) {
+			if !ad.Supports(m) && m != manifest.ModuleHooks { // hooks têm fallback
 				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s ainda não é suportado pelo adaptador %s (pulado)", ad.ID(), m, ad.Name()))
 				continue
 			}
@@ -165,6 +171,14 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				}
 			case manifest.ModuleMCP:
 				if err := planMCP(plan, lock, p, ad, req.Scope, req.Env); err != nil {
+					return nil, err
+				}
+			case manifest.ModuleAgents:
+				if err := planAgents(plan, lock, p, ad, req.Scope, req.Env); err != nil {
+					return nil, err
+				}
+			case manifest.ModuleHooks:
+				if err := planHooks(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
 			default:
@@ -267,7 +281,11 @@ func planMCP(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapt
 	if err != nil {
 		return err
 	}
-	doc, base, err := openConfig(cfg.Path, cfg.Format, cfg.Section)
+	kc, err := configFor(ad.ID(), manifest.ModuleMCP, scope, env)
+	if err != nil {
+		return err
+	}
+	doc, base, err := openConfig(plan, cfg.Path, kc.open)
 	if err != nil {
 		plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %v", ad.ID(), err))
 		return nil
@@ -336,8 +354,45 @@ func planMCP(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapt
 	return nil
 }
 
-// openConfig lê e abre uma config de agente; devolve também o hash do arquivo ("" se não existe).
-func openConfig(path, format, section string) (configmerge.Doc, string, error) {
+// keyedConfig diz como abrir a config que guarda os itens (keys) de um módulo.
+type keyedConfig struct {
+	adapter.ConfigFile
+	open func(raw []byte) (configmerge.Doc, error)
+}
+
+// configFor resolve, pelo adaptador, a config de mcp ou de hooks de um agente.
+func configFor(agent string, module manifest.Module, scope adapter.Scope, env adapter.Env) (keyedConfig, error) {
+	ad, err := adapter.Get(agent)
+	if err != nil {
+		return keyedConfig{}, err
+	}
+	switch module {
+	case manifest.ModuleMCP:
+		if ma, ok := ad.(adapter.MCPAdapter); ok {
+			cfg, err := ma.MCPConfig(scope, env)
+			return keyedConfig{cfg, func(raw []byte) (configmerge.Doc, error) {
+				return configmerge.Parse(configmerge.Format(cfg.Format), raw, cfg.Section)
+			}}, err
+		}
+	case manifest.ModuleHooks:
+		if ha, ok := ad.(adapter.HooksAdapter); ok {
+			cfg, err := ha.HooksConfig(scope, env)
+			if err != nil {
+				return keyedConfig{}, err
+			}
+			dir, err := HooksDir(scope, env, agent)
+			return keyedConfig{cfg, func(raw []byte) (configmerge.Doc, error) {
+				return configmerge.ParseArrayItems(raw, cfg.Section, dispatcherMatch(agent, dir))
+			}}, err
+		}
+	}
+	return keyedConfig{}, fmt.Errorf("%s: não sei editar a config de %s", agent, module)
+}
+
+// openConfig abre a config para um plano. Se o plano já mexeu no arquivo (ex.:
+// mcp e hooks no mesmo settings.json), parte do conteúdo pendente, para que um
+// merge não apague o outro. Devolve também o hash do arquivo no disco ("" se não existe).
+func openConfig(plan *Plan, path string, open func([]byte) (configmerge.Doc, error)) (configmerge.Doc, string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, "", err
@@ -347,7 +402,12 @@ func openConfig(path, format, section string) (configmerge.Doc, string, error) {
 		h := sha256.Sum256(raw)
 		base = hex.EncodeToString(h[:])
 	}
-	doc, err := configmerge.Parse(configmerge.Format(format), raw, section)
+	for _, a := range plan.Actions {
+		if a.Key != "" && a.Path == path {
+			raw = a.Content
+		}
+	}
+	doc, err := open(raw)
 	if err != nil {
 		return nil, "", fmt.Errorf("não dá para editar %s: %w", path, err)
 	}
@@ -465,7 +525,7 @@ func planKeyRemovals(plan *Plan, lock *lockfile.Lock, e lockfile.Entry, scope ad
 	if len(e.Keys) == 0 {
 		return nil
 	}
-	cfg, err := mcpConfigFor(e, scope, env)
+	kc, err := configFor(e.Agent, manifest.Module(e.Module), scope, env)
 	if err != nil {
 		return err
 	}
@@ -478,7 +538,7 @@ func planKeyRemovals(plan *Plan, lock *lockfile.Lock, e lockfile.Entry, scope ad
 		byPath[k.Path] = append(byPath[k.Path], k)
 	}
 	for _, path := range paths {
-		doc, base, err := openConfig(path, cfg.Format, cfg.Section)
+		doc, base, err := openConfig(plan, path, kc.open)
 		if err != nil {
 			plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %v", e.Agent, err))
 			continue
@@ -505,19 +565,6 @@ func planKeyRemovals(plan *Plan, lock *lockfile.Lock, e lockfile.Entry, scope ad
 		plan.Actions = append(plan.Actions, acts...)
 	}
 	return nil
-}
-
-// mcpConfigFor pergunta ao adaptador o formato e a seção da config de uma entrada do lock.
-func mcpConfigFor(e lockfile.Entry, scope adapter.Scope, env adapter.Env) (adapter.MCPConfig, error) {
-	ad, err := adapter.Get(e.Agent)
-	if err != nil {
-		return adapter.MCPConfig{}, err
-	}
-	ma, ok := ad.(adapter.MCPAdapter)
-	if !ok || manifest.Module(e.Module) != manifest.ModuleMCP {
-		return adapter.MCPConfig{}, fmt.Errorf("%s: não sei editar a config de %s", e.Agent, e.Module)
-	}
-	return ma.MCPConfig(scope, env)
 }
 
 // Apply executa o plano e atualiza o lockfile. Recusa planos com conflitos.
@@ -552,14 +599,16 @@ func Apply(plan *Plan, now time.Time) error {
 			return fmt.Errorf("%w: %s", ErrStale, a.Path)
 		}
 	}
-	for path := range merged {
-		for _, a := range plan.Actions {
-			if a.Path == path && a.Key != "" {
-				if err := writeConfig(path, a.Content); err != nil {
-					return err
-				}
-				break
-			}
+	// A última ação de cada arquivo tem o conteúdo mais completo (openConfig encadeia).
+	final := map[string][]byte{}
+	for _, a := range plan.Actions {
+		if a.Key != "" && merged[a.Path] {
+			final[a.Path] = a.Content
+		}
+	}
+	for path, content := range final {
+		if err := writeConfig(path, content); err != nil {
+			return err
 		}
 	}
 
@@ -668,7 +717,7 @@ func keyStates(se *StatusEntry, e lockfile.Entry, scope adapter.Scope, env adapt
 	if len(e.Keys) == 0 {
 		return nil
 	}
-	cfg, err := mcpConfigFor(e, scope, env)
+	kc, err := configFor(e.Agent, manifest.Module(e.Module), scope, env)
 	if err != nil {
 		return err
 	}
@@ -681,7 +730,7 @@ func keyStates(se *StatusEntry, e lockfile.Entry, scope adapter.Scope, env adapt
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
-			if doc, err = configmerge.Parse(configmerge.Format(cfg.Format), raw, cfg.Section); err != nil {
+			if doc, err = kc.open(raw); err != nil {
 				se.States[id] = StateModified
 				continue
 			}

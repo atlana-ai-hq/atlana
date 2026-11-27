@@ -584,3 +584,158 @@ func TestMCPServerRemovedFromPack(t *testing.T) {
 		t.Fatalf("extra deveria ter saído:\n%s", b)
 	}
 }
+
+func setupAgentsHooks(t *testing.T) fixture {
+	t.Helper()
+	f := setupMCP(t)
+	f.env.Exe = "/usr/local/bin/atlana"
+	write(t, filepath.Join(f.pack.Dir, "agents", "planner.md"), "---\nname: planner\ndescription: Planeja.\ntools: [read, search]\nmodel: smart\n---\n\nVocê planeja.\n")
+	write(t, filepath.Join(f.pack.Dir, "hooks", "guard", "hook.yaml"), "name: guard\nevent: pre_tool\nmatch:\n  tool: [edit, write]\n  path: [\".plan/**\"]\nrun: ./run.sh\nfallback: rule\n")
+	write(t, filepath.Join(f.pack.Dir, "hooks", "guard", "run.sh"), "#!/bin/sh\nexit 2\n")
+	os.Chmod(filepath.Join(f.pack.Dir, "hooks", "guard", "run.sh"), 0o755)
+	write(t, filepath.Join(f.pack.Dir, "hooks", "guard", "rule.md"), "Não edite arquivos em .plan/.\n")
+	write(t, filepath.Join(f.pack.Dir, "hooks", "bye", "hook.yaml"), "name: bye\nevent: stop\nrun: ./run.sh\nfallback: skip\n")
+	write(t, filepath.Join(f.pack.Dir, "hooks", "bye", "run.sh"), "#!/bin/sh\n")
+	os.Chmod(filepath.Join(f.pack.Dir, "hooks", "bye", "run.sh"), 0o755)
+	f.pack.Modules.Agents = []string{"planner"}
+	f.pack.Modules.Hooks = []string{"guard", "bye"}
+	return f
+}
+
+func TestSubagentsInstall(t *testing.T) {
+	f := setupAgentsHooks(t)
+	p := f.planScope(t, adapter.ScopeProject, []manifest.Module{manifest.ModuleAgents}, "claude", "gemini", "cursor")
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, ".claude", "agents", "planner.md")); !strings.Contains(string(b), "model: opus") || !strings.Contains(string(b), "tools: Read, Grep, Glob") {
+		t.Fatalf("claude:\n%s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, ".gemini", "agents", "planner.md")); !strings.Contains(string(b), "kind: local") {
+		t.Fatalf("gemini:\n%s", b)
+	}
+	if !strings.Contains(strings.Join(p.Notes, "\n"), "cursor: agents ainda não é suportado") {
+		t.Fatalf("cursor deveria ser pulado com nota: %v", p.Notes)
+	}
+}
+
+func TestHooksNeedExplicitOnly(t *testing.T) {
+	f := setupAgentsHooks(t)
+	p := f.plan(t, "claude")
+	for _, a := range p.Actions {
+		if a.Module == manifest.ModuleHooks {
+			t.Fatalf("hooks entraram sem --only hooks: %+v", a)
+		}
+	}
+	if !strings.Contains(strings.Join(p.Notes, "\n"), "só são instalados com --only hooks") {
+		t.Fatalf("faltou a nota: %v", p.Notes)
+	}
+}
+
+func TestHooksInstallSharesSettingsWithMCP(t *testing.T) {
+	f := setupAgentsHooks(t)
+	settings := filepath.Join(f.env.Home, ".gemini", "settings.json")
+	write(t, settings, `{"theme": "dark", "hooks": {"BeforeTool": [{"matcher": "write_file", "hooks": [{"type": "command", "command": "meu-hook"}]}]}}`)
+
+	mods := []manifest.Module{manifest.ModuleMCP, manifest.ModuleHooks}
+	p := f.planScope(t, adapter.ScopeUser, mods, "gemini")
+	if len(p.Conflicts) != 0 {
+		t.Fatal(p.Conflicts)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(settings)
+	got := string(b)
+	dir := filepath.Join(f.env.Home, ".config", "atlana", "hooks", "gemini")
+	for _, want := range []string{`"theme": "dark"`, `"meu-hook"`, `"demo"`, `"BeforeTool"`, `"AfterAgent"`, "--event pre_tool --dir '" + dir + "'", "--event stop"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("settings.json sem %s:\n%s", want, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo", "guard", "run.sh")); err != nil {
+		t.Fatal("script do hook não copiado")
+	}
+	if st, _ := os.Stat(filepath.Join(dir, "demo", "guard", "run.sh")); st.Mode()&0o111 == 0 {
+		t.Fatal("script perdeu o +x")
+	}
+	if again := f.planScope(t, adapter.ScopeUser, mods, "gemini"); again.Changes() != 0 {
+		t.Fatalf("reinstalar deveria ser idempotente: %v", ops(again))
+	}
+
+	stat, _ := Status(f.env)
+	for _, e := range stat {
+		for id, s := range e.States {
+			if s != StateOK {
+				t.Errorf("%s: %s", id, s)
+			}
+		}
+	}
+
+	u, err := PlanUninstall("demo", nil, adapter.ScopeUser, f.env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(settings)
+	got = string(b)
+	if strings.Contains(got, "hook dispatch") || strings.Contains(got, `"demo"`) || !strings.Contains(got, `"meu-hook"`) || !strings.Contains(got, `"theme": "dark"`) {
+		t.Fatalf("uninstall deveria tirar só o que é nosso:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo")); !os.IsNotExist(err) {
+		t.Fatal("hooks copiados deveriam sair")
+	}
+}
+
+func TestHooksTwoPacksShareDispatcher(t *testing.T) {
+	a := setupAgentsHooks(t)
+	only := []manifest.Module{manifest.ModuleHooks}
+	if err := Apply(a.planScope(t, adapter.ScopeProject, only, "claude"), now); err != nil {
+		t.Fatal(err)
+	}
+	b := setupAgentsHooks(t)
+	b.env = a.env
+	b.pack.Name = "other"
+	if err := Apply(b.planScope(t, adapter.ScopeProject, only, "claude"), now); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(a.env.WorkDir, ".claude", "settings.json")
+	if raw, _ := os.ReadFile(settings); strings.Count(string(raw), "hook dispatch") != 2 { // PreToolUse e Stop, sem duplicar
+		t.Fatalf("dispatcher duplicado:\n%s", raw)
+	}
+	u, _ := PlanUninstall("demo", nil, adapter.ScopeProject, a.env)
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(settings); strings.Count(string(raw), "hook dispatch") != 2 {
+		t.Fatalf("o outro pack ainda usa o dispatcher:\n%s", raw)
+	}
+}
+
+func TestHookFallbacks(t *testing.T) {
+	f := setupAgentsHooks(t)
+	only := []manifest.Module{manifest.ModuleHooks}
+	p := f.planScope(t, adapter.ScopeProject, only, "cursor", "codex", "grok")
+	if len(p.Conflicts) != 0 {
+		t.Fatal(p.Conflicts)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, ".cursor", "rules", "atlana-demo-hooks-guard.mdc")); !strings.Contains(string(b), "Não edite arquivos em .plan/") {
+		t.Fatalf("fallback rule no cursor:\n%s", b)
+	}
+	notes := strings.Join(p.Notes, "\n")
+	for _, want := range []string{"o hook bye foi pulado (fallback: skip)", "grok: sem hooks e sem rules"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("faltou nota %q:\n%s", want, notes)
+		}
+	}
+
+	write(t, filepath.Join(f.pack.Dir, "hooks", "bye", "hook.yaml"), "name: bye\nevent: stop\nrun: ./run.sh\nfallback: fail\n")
+	if p := f.planScope(t, adapter.ScopeProject, only, "codex"); len(p.Conflicts) != 1 {
+		t.Fatalf("fallback fail deveria bloquear: %v", p.Conflicts)
+	}
+}

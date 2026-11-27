@@ -126,3 +126,37 @@ func TestTOMLQuotedNamesAndComments(t *testing.T) {
 		t.Fatal("comentários não deveriam mudar o hash")
 	}
 }
+
+func TestArrayItems(t *testing.T) {
+	ours := func(_ string, it map[string]any) bool { return it["id"] == "atlana" }
+	raw := []byte(`{"theme": "x", "hooks": {"PreToolUse": [{"id": "user"}], "Stop": [{"id": "u2"}]}}`)
+	d, err := ParseArrayItems(raw, "hooks", ours)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.Hash("PreToolUse"); ok {
+		t.Fatal("item do usuário não é nosso")
+	}
+	item := map[string]any{"id": "atlana", "cmd": "a"}
+	d.Set("PreToolUse", item)
+	d.Set("PostToolUse", item)
+	want, _ := d.HashOf("PreToolUse", item)
+	if h, ok := d.Hash("PreToolUse"); !ok || h != want {
+		t.Fatal("hash do nosso item")
+	}
+	item["cmd"] = "b"
+	d.Set("PreToolUse", item) // substitui, não duplica
+	got := string(d.Bytes())
+	if strings.Count(got, `"atlana"`) != 2 || !strings.Contains(got, `"user"`) || !strings.Contains(got, `"theme"`) {
+		t.Fatalf("merge de array:\n%s", got)
+	}
+	d.Delete("PreToolUse")
+	d.Delete("PostToolUse")
+	got = string(d.Bytes())
+	if strings.Contains(got, "atlana") || strings.Contains(got, "PostToolUse") || !strings.Contains(got, `"user"`) {
+		t.Fatalf("delete deveria tirar só o nosso item (e a lista vazia):\n%s", got)
+	}
+	if _, err := ParseArrayItems([]byte(`{"hooks": {"X": {}}}`), "hooks", ours); err == nil {
+		t.Fatal("evento que não é lista deveria falhar")
+	}
+}

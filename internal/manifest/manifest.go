@@ -317,14 +317,10 @@ func checkContent(p *Pack, rep *Report) {
 	}
 
 	for _, a := range p.Modules.Agents {
-		if !isFile(filepath.Join(p.Dir, "agents", a+".md")) {
-			rep.errorf(mf, "agents: %q declarado, mas agents/%s.md não existe", a, a)
-		}
+		checkSubagent(p, a, rep)
 	}
 	for _, h := range p.Modules.Hooks {
-		if !isFile(filepath.Join(p.Dir, "hooks", h, "hook.yaml")) {
-			rep.errorf(mf, "hooks: %q declarado, mas hooks/%s/hook.yaml não existe", h, h)
-		}
+		checkHook(p, h, rep)
 	}
 	for _, c := range p.Modules.Commands {
 		if !isFile(filepath.Join(p.Dir, "commands", c+".md")) {

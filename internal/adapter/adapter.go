@@ -37,6 +37,8 @@ type Env struct {
 	WorkDir  string
 	LookPath func(string) (string, error)
 	Getenv   func(string) string
+	// Exe é o caminho absoluto do binário atlana, usado pelos hooks instalados.
+	Exe string
 }
 
 // SystemEnv monta o Env a partir do processo atual.
@@ -49,7 +51,11 @@ func SystemEnv() (Env, error) {
 	if err != nil {
 		return Env{}, err
 	}
-	return Env{Home: home, WorkDir: wd, LookPath: exec.LookPath, Getenv: os.Getenv}, nil
+	exe, err := os.Executable()
+	if err == nil {
+		exe, _ = filepath.EvalSymlinks(exe)
+	}
+	return Env{Home: home, WorkDir: wd, LookPath: exec.LookPath, Getenv: os.Getenv, Exe: exe}, nil
 }
 
 // Detection é o resultado de Detect: se o agente parece instalado e por quê.

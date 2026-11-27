@@ -3,6 +3,8 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/atlana-ai-hq/atlana/internal/adapter"
+	"github.com/atlana-ai-hq/atlana/internal/hookrun"
 	"github.com/atlana-ai-hq/atlana/internal/installer"
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
 	"github.com/atlana-ai-hq/atlana/spec"
@@ -50,10 +53,12 @@ Comandos:
   install <pack> [flags]        planeja e instala um pack (caminho do diretório)
   uninstall <nome-do-pack>      remove exatamente o que o atlana.lock registrou
   status                        mostra o que está instalado e se foi editado
+  hook dispatch [flags]         uso interno: chamado pelos agentes quando um hook dispara
 
 Flags de install/uninstall:
   --agent cursor,claude         agentes alvo (padrão: os detectados)
-  --only skills                 módulos (rules,skills,agents,hooks,commands,mcp)
+  --only skills                 módulos (rules,skills,agents,hooks,commands,mcp);
+                                hooks só entram quando pedidos aqui
   --scope user|project          onde instalar (padrão: user)
   --dry-run                     só mostra o plano
   --yes                         aplica sem perguntar (CI)
@@ -77,6 +82,8 @@ func (a *App) Run(args []string) int {
 		err = a.install(args[1:])
 	case "uninstall":
 		err = a.uninstall(args[1:])
+	case "hook":
+		return a.hook(args[1:])
 	case "status":
 		err = a.status()
 	case "help", "--help", "-h":
@@ -448,4 +455,40 @@ func (a *App) status() error {
 func IsTerminal(f *os.File) bool {
 	st, err := f.Stat()
 	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+// hook dispatch: lê o payload do agente no stdin e roda os hooks instalados.
+// Devolve o exit code direto (2 = negar), sem passar pelo tratamento de erro comum.
+func (a *App) hook(args []string) int {
+	if len(args) == 0 || args[0] != "dispatch" {
+		fmt.Fprintln(a.Stderr, "uso: atlana hook dispatch --agent <id> --event <evento> --dir <diretório>")
+		return 2
+	}
+	fs := flag.NewFlagSet("hook dispatch", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	agent := fs.String("agent", "", "agente que chamou")
+	event := fs.String("event", "", "evento canônico (pre_tool…)")
+	dir := fs.String("dir", "", "diretório dos hooks instalados")
+	if err := fs.Parse(args[1:]); err != nil || *agent == "" || *event == "" || *dir == "" {
+		fmt.Fprintln(a.Stderr, "uso: atlana hook dispatch --agent <id> --event <evento> --dir <diretório>")
+		return 2
+	}
+	ad, err := adapter.Get(*agent)
+	if err != nil {
+		fmt.Fprintln(a.Stderr, "atlana hook:", err)
+		return 0 // nunca travar o agente por erro nosso
+	}
+	ha, ok := ad.(adapter.HooksAdapter)
+	if !ok {
+		fmt.Fprintln(a.Stderr, "atlana hook: o agente não tem hooks:", *agent)
+		return 0
+	}
+	payload := map[string]any{}
+	if raw, err := io.ReadAll(a.Stdin); err == nil && len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			fmt.Fprintln(a.Stderr, "atlana hook: payload inválido:", err)
+		}
+	}
+	ev := hookrun.Normalize(*agent, *event, payload, ha.ToolCategory)
+	return hookrun.Dispatch(*dir, ev, a.Stderr)
 }

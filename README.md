@@ -2,7 +2,7 @@
 
 **Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta para o Grok Bot). Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), além de **subagents** e **hooks** no Claude Code e no Gemini CLI. Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -84,10 +84,10 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 
 | Agente | Detecção | Skills | Rules | Subagents | Hooks | MCP |
 |---|---|---|---|---|---|---|
-| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | ⏳ | ✅ |
-| Claude Code | ✅ | ✅ | ✅ | ⏳ | ⏳ | ✅ |
-| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | ⏳ | ✅ |
-| Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ⏳ | ⏳ | ✅ |
+| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | fallback | ✅ |
+| Claude Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ |
+| Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
 
 No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent Skills) para `~/.config/atlana/exports/grok/skills/` (ou `.atlana/exports/grok/skills/` com `--scope project`), e você envia cada pasta pelo Grok. Lock, `status` e `uninstall` funcionam igual. Sem MCP remoto nem sync automático no v1 ([ADR 0002](docs/adr/0002-grok-exporta-skills.md)).
@@ -95,6 +95,8 @@ No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent 
 Rules nunca mexem no seu `CLAUDE.md`, `GEMINI.md` ou `AGENTS.md`: o Atlana grava só arquivos próprios. No Claude Code e no Cursor eles são carregados sozinhos; no Gemini CLI a CLI mostra a linha `@...` para importar no `GEMINI.md`; no Codex você referencia o arquivo no seu `AGENTS.md` ([ADR 0003](docs/adr/0003-rules-em-arquivos-proprios.md)).
 
 Servidores MCP entram por merge na config do agente (`~/.claude.json`/`.mcp.json`, `.cursor/mcp.json`, `.gemini/settings.json`, `.codex/config.toml`): o resto do arquivo fica como estava, e o lock guarda o hash de cada servidor, não do arquivo. Em `env` e `headers` o pack só pode usar `${VAR}` (ou `Bearer ${VAR}`); valores literais são erro no `validate` ([ADR 0004](docs/adr/0004-mcp-merge-com-posse-no-lock.md)).
+
+Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e a config do agente ganha um item por evento que chama `atlana hook dispatch`. O dispatcher normaliza o payload, aplica `match` e repassa `exit 2` (negar). Instale a CLI com `go install`, porque o caminho do binário fica gravado na config. Agentes sem hooks seguem o `fallback` do hook (`rule`, `skip` ou `fail`) ([ADR 0005](docs/adr/0005-subagents-e-hooks-com-dispatcher.md)).
 
 ## Roadmap
 
@@ -105,7 +107,7 @@ Servidores MCP entram por merge na config do agente (`~/.claude.json`/`.mcp.json
 - [x] Skills no Codex
 - [x] Rules em arquivos próprios (Claude Code, Cursor, Gemini CLI, Codex)
 - [x] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
-- [ ] Hooks com shim de eventos genéricos; subagents
+- [x] Hooks com dispatcher de eventos genéricos e subagents (Claude Code, Gemini CLI)
 - [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
 - [ ] Releases com binários e `brew tap`
 
@@ -139,4 +141,4 @@ atlana doctor
 atlana install packs/hello --only skills --agent cursor,claude --dry-run
 ```
 
-Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot), plus rules and MCP servers; hooks and subagents are on the roadmap. MIT licensed.
+Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot), plus rules and MCP servers; subagents and hooks install into Claude Code and Gemini CLI. MIT licensed.

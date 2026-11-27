@@ -34,7 +34,8 @@ func (claude) Detect(env Env) Detection {
 	return detectBy(env, []string{"claude"}, []string{filepath.Join(env.Home, ".claude")})
 }
 func (claude) Supports(m manifest.Module) bool {
-	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
+		m == manifest.ModuleAgents || m == manifest.ModuleHooks
 }
 func (claude) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".claude", "skills")
@@ -71,7 +72,8 @@ func (gemini) Detect(env Env) Detection {
 	return detectBy(env, []string{"gemini"}, []string{filepath.Join(env.Home, ".gemini")})
 }
 func (gemini) Supports(m manifest.Module) bool {
-	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
+		m == manifest.ModuleAgents || m == manifest.ModuleHooks
 }
 func (gemini) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".gemini", "skills")

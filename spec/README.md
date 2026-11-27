@@ -9,8 +9,8 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
 | Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex) |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
-| Subagents | formato Atlana (`agents/<nome>.md`) | validado (existência), instalação futura |
-| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado (existência), instalação futura |
+| Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI) |
+| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI); fallback nos outros |
 | Commands | formato Atlana (`commands/<nome>.md`) | validado (existência), instalação futura |
 
 ## 1. Pack
@@ -77,31 +77,37 @@ Seguem a spec Agent Skills sem extensões:
 - Opcionais: `license`, `compatibility` (≤ 500), `metadata` (mapa texto → texto), `allowed-tools` (texto).
 - Outros campos geram aviso: alguns agentes aceitam extras, mas não é portável.
 
-## 4. Hooks (rascunho, ainda não instalados)
+## 4. Hooks
 
 ```yaml
-name: protect-plan-files
-event: pre_tool          # pre_tool | post_tool | prompt_submit | session_start | stop
-match:
-  tool: [edit, write]    # shell | edit | write | read | mcp
-  path: [".plan/**"]
-run: ./run.sh            # recebe JSON normalizado no stdin; exit 2 = negar
-timeout: 10
-fallback: rule           # agente sem hooks: rule | skip | fail
+name: protect-plan-files     # igual ao diretório hooks/<nome>/
+event: pre_tool              # pre_tool | post_tool | prompt_submit | session_start | stop
+match:                       # só em pre_tool e post_tool; vazio = tudo
+  tool: [edit, write]        # shell | edit | write | read | mcp
+  path: [".plan/**"]         # globs relativos ao projeto (*, ?, **)
+run: ./run.sh                # relativo ao hook, executável; recebe o JSON normalizado no stdin
+timeout: 10                  # 1 a 60 segundos (padrão 30)
+fallback: rule               # agente sem hooks: rule (usa rule.md ao lado) | skip (padrão) | fail
 ```
 
-O adaptador vai gerar um shim que converte o payload nativo de cada agente em um JSON único (`{"event","tool","path","command","agent"}`) e a resposta de volta.
+O script recebe no stdin `{"event","agent","tool","path","command","prompt","cwd"}`. **Exit 2 nega a ação**, e o stderr vira o motivo mostrado ao agente; qualquer outro erro ou estouro de tempo só gera aviso. O stdout é descartado.
 
-## 5. Subagents (rascunho, ainda não instalados)
+**Hooks nunca entram em silêncio.** Um `install` sem `--only` pula os hooks com um aviso; é preciso `--only hooks`, e o plano diz o que vai rodar.
+
+## 5. Subagents
 
 ```markdown
 ---
-name: planner
+name: planner                           # igual ao nome do arquivo agents/<nome>.md
 description: Roda o planejamento em contexto isolado.
-tools: [read, search, shell:readonly]   # capacidades abstratas
-model: inherit                          # inherit | fast | smart
+tools: [read, search, shell:readonly]   # read | search | edit | write | shell | shell:readonly | web | mcp
+model: inherit                          # inherit (padrão) | fast | smart
 ---
+
+Prompt do subagent (obrigatório).
 ```
+
+Sem `tools`, o subagent herda todas as ferramentas. Uma ferramenta sem equivalente seguro no agente é deixada de fora, com aviso. Se nenhuma sobra, o subagent não é instalado, porque no agente uma lista vazia significa "todas".
 
 ## 6. Instalação: garantias
 
@@ -151,3 +157,16 @@ Cada servidor de `modules.mcp` entra por merge (ADR 0004). `${PLUGIN_ROOT}` vira
 | Codex CLI (`codex`) | `$CODEX_HOME/config.toml` (padrão `~/.codex`) → `[mcp_servers.<nome>]` | `.codex/config.toml` | `env` vira `env_vars` (a variável precisa ter o mesmo nome); `Authorization: Bearer ${X}` vira `bearer_token_env_var`; outros headers, `env_http_headers` |
 
 No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_servers]`, inline ou chave com ponto), a instalação para com conflito.
+
+## 10. Onde cada agente recebe subagents e hooks (v0.1)
+
+| Agente | Subagents | Hooks |
+|---|---|---|
+| Claude Code (`claude`) | `.claude/agents/<nome>.md` (tools `Read, Grep…`; model `inherit/haiku/opus`) | `.claude/settings.json` → `hooks` (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `Stop`) |
+| Gemini CLI (`gemini`) | `.gemini/agents/<nome>.md` (`kind: local`; tools `read_file…`; `fast`/`smart` usam o modelo da sessão, com aviso) | `.gemini/settings.json` → `hooks` (`BeforeTool`, `AfterTool`, `BeforeAgent`, `SessionStart`, `AfterAgent`) |
+| Cursor, Codex | pulado, com aviso | `fallback` de cada hook |
+| Grok Bot | pulado, com aviso | `skip` (não tem rules) |
+
+Os caminhos valem para `--scope user` (em `~`) e `--scope project` (no projeto). Os scripts são copiados para `$XDG_CONFIG_HOME/atlana/hooks/<agente>/<pack>/<hook>/` (user) ou `.atlana/hooks/<agente>/<pack>/<hook>/` (project). Na config do agente entra **um item por evento**, compartilhado entre packs, que chama `atlana hook dispatch`. O binário precisa continuar no caminho em que estava no `install` (use `go install`, não `go run`).
+
+Shell `shell:readonly` não tem equivalente nos dois agentes e fica de fora. No Claude Code, `mcp` também fica de fora (não há curinga portável); no Gemini vira `mcp_*`.

@@ -14,8 +14,8 @@ const (
 	FormatTOML = "toml"
 )
 
-// MCPConfig diz em que arquivo e seção ficam os servidores MCP de um agente.
-type MCPConfig struct {
+// ConfigFile diz em que arquivo e seção de config um agente guarda um módulo (MCP, hooks).
+type ConfigFile struct {
 	Path    string
 	Format  string // FormatJSON ou FormatTOML
 	Section string // ex.: "mcpServers"
@@ -26,7 +26,7 @@ type MCPConfig struct {
 // O servidor entra por merge na config do agente; nada fora dele muda, e a
 // propriedade fica no atlana.lock (ADR 0004).
 type MCPAdapter interface {
-	MCPConfig(scope Scope, env Env) (MCPConfig, error)
+	MCPConfig(scope Scope, env Env) (ConfigFile, error)
 	// MCPServer traduz um servidor no formato Agent Plugins para o do agente.
 	MCPServer(def map[string]any, packDir string) (map[string]any, error)
 }
@@ -71,7 +71,7 @@ func prepare(def map[string]any, packDir string, ref func(name string) string) m
 
 // claude: ~/.claude.json (user) ou <projeto>/.mcp.json (project). O Claude Code
 // expande ${VAR}; servidores remotos precisam de "type".
-func (claude) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
+func (claude) MCPConfig(scope Scope, env Env) (ConfigFile, error) {
 	var path string
 	var err error
 	if scope == ScopeUser {
@@ -79,7 +79,7 @@ func (claude) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
 	} else {
 		path, err = scopedDir(scope, env, ".mcp.json")
 	}
-	return MCPConfig{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
+	return ConfigFile{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
 }
 func (claude) MCPServer(def map[string]any, packDir string) (map[string]any, error) {
 	s := prepare(def, packDir, nil)
@@ -92,18 +92,18 @@ func (claude) MCPServer(def map[string]any, packDir string) (map[string]any, err
 }
 
 // cursor: ~/.cursor/mcp.json ou <projeto>/.cursor/mcp.json; variáveis como ${env:VAR}.
-func (cursor) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
+func (cursor) MCPConfig(scope Scope, env Env) (ConfigFile, error) {
 	path, err := scopedDir(scope, env, ".cursor", "mcp.json")
-	return MCPConfig{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
+	return ConfigFile{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
 }
 func (cursor) MCPServer(def map[string]any, packDir string) (map[string]any, error) {
 	return prepare(def, packDir, func(n string) string { return "${env:" + n + "}" }), nil
 }
 
 // gemini: settings.json do usuário ou do projeto. HTTP remoto usa httpUrl; SSE, url.
-func (gemini) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
+func (gemini) MCPConfig(scope Scope, env Env) (ConfigFile, error) {
 	path, err := scopedDir(scope, env, ".gemini", "settings.json")
-	return MCPConfig{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
+	return ConfigFile{Path: path, Format: FormatJSON, Section: "mcpServers"}, err
 }
 func (gemini) MCPServer(def map[string]any, packDir string) (map[string]any, error) {
 	s := prepare(def, packDir, nil)
@@ -118,7 +118,7 @@ func (gemini) MCPServer(def map[string]any, packDir string) (map[string]any, err
 // codex: config.toml em $CODEX_HOME (ou ~/.codex) ou em <projeto>/.codex. O Codex
 // não expande ${VAR}: env vira env_vars (repassa a variável do ambiente) e
 // headers viram bearer_token_env_var / env_http_headers.
-func (codex) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
+func (codex) MCPConfig(scope Scope, env Env) (ConfigFile, error) {
 	var path string
 	var err error
 	if scope == ScopeUser && env.Getenv != nil && env.Getenv("CODEX_HOME") != "" {
@@ -126,7 +126,7 @@ func (codex) MCPConfig(scope Scope, env Env) (MCPConfig, error) {
 	} else {
 		path, err = scopedDir(scope, env, ".codex", "config.toml")
 	}
-	return MCPConfig{Path: path, Format: FormatTOML, Section: "mcp_servers"}, err
+	return ConfigFile{Path: path, Format: FormatTOML, Section: "mcp_servers"}, err
 }
 func (codex) MCPServer(def map[string]any, packDir string) (map[string]any, error) {
 	s := prepare(def, packDir, nil)
