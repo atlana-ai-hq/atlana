@@ -14,6 +14,10 @@ CLI em Go (`cmd/atlana`) que valida packs no formato Atlana e os instala em agen
 - `internal/adapter/`: um adaptador por agente (`Detect`, `Supports`, `SkillsRoot`). Tudo que vem do sistema passa por `adapter.Env`.
 - `internal/installer/`: planner (`PlanInstall`, `PlanUninstall`), `Apply` e `Status`.
 - `internal/lockfile/`: formato e leitura/escrita do `atlana.lock`.
+- `internal/configmerge/`: merge não destrutivo de configs de agentes (JSON, TOML e itens de array).
+- `internal/hookrun/`: dispatcher que os agentes chamam nos hooks (`atlana hook dispatch`).
+- `internal/source/`: origens `github:owner/repo//caminho@ref`, buscadas com o git da pessoa para um cache.
+- `internal/registry/`: registry local do Hub (`hub.yaml`).
 - `packs/`: packs de exemplo; todos precisam passar em `atlana validate`.
 - `docs/adr/`: decisões de arquitetura.
 
@@ -28,7 +32,7 @@ go run ./cmd/atlana validate packs
 
 ## Regras
 
-- Calcular o plano **nunca** escreve no disco. Só `installer.Apply` escreve.
+- Calcular o plano **nunca** escreve no disco. Só `installer.Apply` escreve. (Buscar uma origem remota escreve só no cache `~/.cache/atlana`, antes do plano.)
 - Nunca sobrescrever ou apagar arquivo que não está no lock com o mesmo hash.
 - Testes não podem tocar no HOME real: use `adapter.Env` com `t.TempDir()` e `LookPath` falso.
 - Mudou o formato? Atualize juntos `spec/README.md`, o schema, os testes e, se for decisão relevante, um ADR novo.

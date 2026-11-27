@@ -102,6 +102,8 @@ type InstallRequest struct {
 	Modules []manifest.Module // vazio = todos os módulos declarados no pack
 	Scope   adapter.Scope
 	Env     adapter.Env
+	// Origin é o que vai para o lock como origem (ex.: github:o/r//p@<commit>); vazio = Pack.Dir.
+	Origin string
 }
 
 // LockPath resolve o lockfile do escopo.
@@ -122,6 +124,9 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 	plan := &Plan{
 		Kind: KindInstall, PackName: p.Name, PackVersion: p.Version, Source: p.Dir,
 		Scope: req.Scope, LockPath: LockPath(req.Scope, req.Env),
+	}
+	if req.Origin != "" {
+		plan.Source = req.Origin
 	}
 	lock, err := lockfile.Load(plan.LockPath)
 	if err != nil {

@@ -96,6 +96,8 @@ Rules nunca mexem no seu `CLAUDE.md`, `GEMINI.md` ou `AGENTS.md`: o Atlana grava
 
 Servidores MCP entram por merge na config do agente (`~/.claude.json`/`.mcp.json`, `.cursor/mcp.json`, `.gemini/settings.json`, `.codex/config.toml`): o resto do arquivo fica como estava, e o lock guarda o hash de cada servidor, não do arquivo. Em `env` e `headers` o pack só pode usar `${VAR}` (ou `Bearer ${VAR}`); valores literais são erro no `validate` ([ADR 0004](docs/adr/0004-mcp-merge-com-posse-no-lock.md)).
 
+Packs remotos: `atlana install github:owner/repo//caminho@ref` busca com o seu `git` (repos privados funcionam com `gh auth login` ou SSH), guarda em cache e grava no lock o commit exato. O registry local (`atlana registry add|list|remove`, em `~/.config/atlana/hub.yaml`) dá nomes curtos às origens (`atlana install meus-packs//packs/work`) e esconde os privados que você não acessa ([ADR 0006](docs/adr/0006-origens-remotas-e-registry.md)).
+
 Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e a config do agente ganha um item por evento que chama `atlana hook dispatch`. O dispatcher normaliza o payload, aplica `match` e repassa `exit 2` (negar). Instale a CLI com `go install`, porque o caminho do binário fica gravado na config. Agentes sem hooks seguem o `fallback` do hook (`rule`, `skip` ou `fail`) ([ADR 0005](docs/adr/0005-subagents-e-hooks-com-dispatcher.md)).
 
 ## Roadmap
@@ -109,6 +111,7 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
 - [x] Hooks com dispatcher de eventos genéricos e subagents (Claude Code, Gemini CLI)
 - [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
+- [x] Origens `github:owner/repo//caminho@ref` e registry local (`atlana registry`)
 - [ ] Releases com binários e `brew tap`
 
 ## Desenvolvimento

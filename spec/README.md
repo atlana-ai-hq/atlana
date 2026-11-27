@@ -170,3 +170,26 @@ No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_
 Os caminhos valem para `--scope user` (em `~`) e `--scope project` (no projeto). Os scripts são copiados para `$XDG_CONFIG_HOME/atlana/hooks/<agente>/<pack>/<hook>/` (user) ou `.atlana/hooks/<agente>/<pack>/<hook>/` (project). Na config do agente entra **um item por evento**, compartilhado entre packs, que chama `atlana hook dispatch`. O binário precisa continuar no caminho em que estava no `install` (use `go install`, não `go run`).
 
 Shell `shell:readonly` não tem equivalente nos dois agentes e fica de fora. No Claude Code, `mcp` também fica de fora (não há curinga portável); no Gemini vira `mcp_*`.
+
+## 11. Origens remotas e registry (v0.1)
+
+`atlana install` aceita, nesta ordem:
+
+1. **Origem GitHub:** `github:owner/repo[//caminho][@ref]`. O `ref` pode ser branch, tag ou commit; sem ele, vale a branch padrão.
+2. **Caminho local** de um pack.
+3. **Nome do registry:** `<nome>[//caminho][@ref]`.
+
+A busca usa o `git` da pessoa, com o prompt de senha desligado. Primeiro HTTPS (com o `gh auth git-credential` somado aos credential helpers, se o `gh` estiver no PATH) e depois SSH (`BatchMode`). O repo fica em cache em `$XDG_CACHE_HOME/atlana/sources/github/<owner>/<repo>` (padrão `~/.cache/...`). O lock grava a origem com o **commit exato** (`github:o/r//caminho@<sha>`). Nenhum token é lido ou gravado.
+
+O registry fica em `$XDG_CONFIG_HOME/atlana/hub.yaml`:
+
+```yaml
+apiVersion: atlana/v1alpha1
+kind: HubRegistry
+projects:
+  - name: atlana                 # nome de pack (minúsculas e hífens), único
+    origin: github:atlana-ai-hq/atlana   # só o repo, sem //caminho nem @ref
+    visibility: public           # public | private
+```
+
+`atlana registry list` só mostra projetos `private` quando `git ls-remote` consegue acessá-los com a autenticação atual (`--all` mostra todos, com o estado). Campos desconhecidos são erro, e isso inclui qualquer tentativa de guardar um token.

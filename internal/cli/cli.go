@@ -21,6 +21,8 @@ import (
 	"github.com/atlana-ai-hq/atlana/internal/hookrun"
 	"github.com/atlana-ai-hq/atlana/internal/installer"
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
+	"github.com/atlana-ai-hq/atlana/internal/registry"
+	"github.com/atlana-ai-hq/atlana/internal/source"
 	"github.com/atlana-ai-hq/atlana/spec"
 )
 
@@ -36,6 +38,8 @@ type App struct {
 	Now    func() time.Time
 	// Interactive diz se podemos perguntar "Aplicar?" no terminal.
 	Interactive bool
+	// Fetcher busca origens remotas; nil = git da pessoa, com cache em ~/.cache/atlana.
+	Fetcher *source.Fetcher
 }
 
 // ErrUsage indica erro de uso (exit 2).
@@ -50,9 +54,13 @@ Comandos:
   version                       mostra a versão
   doctor                        detecta agentes instalados e o que cada adaptador suporta
   validate [caminho]            valida packs (atlana.yaml + SKILL.md); padrão: .
-  install <pack> [flags]        planeja e instala um pack (caminho do diretório)
+  install <pack> [flags]        planeja e instala um pack: caminho local, github:owner/repo//caminho@ref
+                                ou <nome-no-registry>//caminho@ref
   uninstall <nome-do-pack>      remove exatamente o que o atlana.lock registrou
   status                        mostra o que está instalado e se foi editado
+  registry list [--all]         projetos do registry local (privados só com acesso)
+  registry add <nome> <origem> [--private]
+  registry remove <nome>
   hook dispatch [flags]         uso interno: chamado pelos agentes quando um hook dispara
 
 Flags de install/uninstall:
@@ -84,6 +92,8 @@ func (a *App) Run(args []string) int {
 		err = a.uninstall(args[1:])
 	case "hook":
 		return a.hook(args[1:])
+	case "registry":
+		err = a.registry(args[1:])
 	case "status":
 		err = a.status()
 	case "help", "--help", "-h":
@@ -256,9 +266,9 @@ func (a *App) install(args []string) error {
 		return err
 	}
 
-	dir := pos[0]
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(a.Env.WorkDir, dir)
+	dir, origin, err := a.resolvePack(pos[0])
+	if err != nil {
+		return err
 	}
 	pack, rep, err := manifest.Load(dir)
 	if err != nil {
@@ -271,7 +281,7 @@ func (a *App) install(args []string) error {
 	}
 
 	plan, err := installer.PlanInstall(installer.InstallRequest{
-		Pack: pack, Agents: agents, Modules: modules, Scope: scope, Env: a.Env,
+		Pack: pack, Agents: agents, Modules: modules, Scope: scope, Env: a.Env, Origin: origin,
 	})
 	if err != nil {
 		return err
@@ -491,4 +501,159 @@ func (a *App) hook(args []string) int {
 	}
 	ev := hookrun.Normalize(*agent, *event, payload, ha.ToolCategory)
 	return hookrun.Dispatch(*dir, ev, a.Stderr)
+}
+
+// resolvePack devolve o diretório local do pack e a origem para o lock ("" = local).
+// Ordem: origem github:…, caminho local, nome no registry.
+func (a *App) resolvePack(ref string) (string, string, error) {
+	if source.IsOrigin(ref) {
+		o, err := source.Parse(ref)
+		if err != nil {
+			return "", "", fmt.Errorf("%w: %v", ErrUsage, err)
+		}
+		return a.fetch(o)
+	}
+	dir := ref
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(a.Env.WorkDir, dir)
+	}
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		return dir, "", nil
+	}
+	reg, err := registry.Load(a.registryPath())
+	if err != nil {
+		return "", "", err
+	}
+	o, ok, err := reg.Resolve(ref)
+	if err != nil {
+		return "", "", fmt.Errorf("%w: %v", ErrUsage, err)
+	}
+	if !ok {
+		return "", "", fmt.Errorf("%q não é um diretório, uma origem github: nem um nome do registry (veja `atlana registry list`)", ref)
+	}
+	return a.fetch(o)
+}
+
+func (a *App) fetch(o source.Origin) (string, string, error) {
+	f := a.fetcher()
+	fmt.Fprintf(a.Stdout, "Buscando %s…\n", o)
+	res, err := f.Fetch(o)
+	if err != nil {
+		return "", "", err
+	}
+	fmt.Fprintf(a.Stdout, "Origem: %s @ %s\n\n", o, res.Commit[:12])
+	return res.Dir, res.Pinned(o), nil
+}
+
+func (a *App) fetcher() source.Fetcher {
+	if a.Fetcher != nil {
+		return *a.Fetcher
+	}
+	cache := ""
+	if a.Env.Getenv != nil {
+		cache = a.Env.Getenv("XDG_CACHE_HOME")
+	}
+	if cache == "" {
+		cache = filepath.Join(a.Env.Home, ".cache")
+	}
+	f := source.Fetcher{CacheDir: filepath.Join(cache, "atlana", "sources")}
+	if a.Env.LookPath != nil {
+		if _, err := a.Env.LookPath("gh"); err == nil {
+			f.UseGH = true
+		}
+	}
+	return f
+}
+
+func (a *App) registryPath() string {
+	xdg := ""
+	if a.Env.Getenv != nil {
+		xdg = a.Env.Getenv("XDG_CONFIG_HOME")
+	}
+	return registry.Path(a.Env.Home, xdg)
+}
+
+func (a *App) registry(args []string) error {
+	const use = "use `atlana registry list [--all] | add <nome> <origem> [--private] | remove <nome>`"
+	if len(args) == 0 {
+		return fmt.Errorf("%w: %s", ErrUsage, use)
+	}
+	path := a.registryPath()
+	reg, err := registry.Load(path)
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "list":
+		fs := flag.NewFlagSet("registry list", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		all := fs.Bool("all", false, "mostra também os privados sem acesso")
+		if err := fs.Parse(args[1:]); err != nil || fs.NArg() > 0 {
+			return fmt.Errorf("%w: %s", ErrUsage, use)
+		}
+		if len(reg.Projects) == 0 {
+			fmt.Fprintf(a.Stdout, "Registry vazio (%s). Adicione com `atlana registry add <nome> github:owner/repo`.\n", path)
+			return nil
+		}
+		f := a.fetcher()
+		tw := tabwriter.NewWriter(a.Stdout, 0, 2, 2, ' ', 0)
+		fmt.Fprintln(tw, "NOME\tORIGEM\tVISIBILIDADE\tACESSO")
+		hidden := 0
+		for _, p := range reg.Projects {
+			access := "-"
+			if p.Visibility == "private" {
+				o, _ := source.Parse(p.Origin)
+				if err := f.Access(o); err != nil {
+					if !*all {
+						hidden++
+						continue
+					}
+					access = "sem acesso"
+				} else {
+					access = "ok"
+				}
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Name, p.Origin, p.Visibility, access)
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+		if hidden > 0 {
+			fmt.Fprintf(a.Stdout, "\n%d projeto(s) privado(s) escondido(s): sem acesso com o seu gh/SSH (veja com --all).\n", hidden)
+		}
+		return nil
+	case "add":
+		fs := flag.NewFlagSet("registry add", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		private := fs.Bool("private", false, "repo privado (só aparece com acesso)")
+		pos, err := parseInterspersed(fs, args[1:])
+		if err != nil || len(pos) != 2 {
+			return fmt.Errorf("%w: %s", ErrUsage, use)
+		}
+		vis := "public"
+		if *private {
+			vis = "private"
+		}
+		if err := reg.Add(registry.Project{Name: pos[0], Origin: pos[1], Visibility: vis}); err != nil {
+			return fmt.Errorf("%w: %v", ErrUsage, err)
+		}
+		if err := reg.Save(path); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "%s → %s (%s) salvo em %s\n", pos[0], pos[1], vis, path)
+		return nil
+	case "remove":
+		if len(args) != 2 {
+			return fmt.Errorf("%w: %s", ErrUsage, use)
+		}
+		if !reg.Remove(args[1]) {
+			return fmt.Errorf("%q não está no registry", args[1])
+		}
+		if err := reg.Save(path); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "%s removido do registry\n", args[1])
+		return nil
+	}
+	return fmt.Errorf("%w: %s", ErrUsage, use)
 }
