@@ -56,7 +56,7 @@ func TestDoctor(t *testing.T) {
 	if code := app.Run([]string{"doctor"}); code != 0 {
 		t.Fatal(code)
 	}
-	for _, want := range []string{"Cursor", "Claude Code", "Codex CLI", "Gemini CLI", "/usr/bin/cursor-agent"} {
+	for _, want := range []string{"Cursor", "Claude Code", "Codex CLI", "Gemini CLI", "Grok Bot", "não (só exporta)", "/usr/bin/cursor-agent"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("doctor sem %q:\n%s", want, out)
 		}
@@ -116,6 +116,20 @@ func TestInstallDryRunThenApplyThenUninstall(t *testing.T) {
 	}
 	if _, err := os.Stat(skill); !os.IsNotExist(err) {
 		t.Fatal("uninstall não removeu")
+	}
+}
+
+func TestInstallGrokPrintsExportDir(t *testing.T) {
+	app, out, errb := newApp(t)
+	root := filepath.Join(app.Env.Home, ".config", "atlana", "exports", "grok", "skills")
+	if code := app.Run([]string{"install", helloPack, "--agent", "grok", "--yes"}); code != 0 {
+		t.Fatalf("code=%d\n%s%s", code, out, errb)
+	}
+	if _, err := os.Stat(filepath.Join(root, "conventional-commit-message", "SKILL.md")); err != nil {
+		t.Fatal("skill não exportada")
+	}
+	if !strings.Contains(out.String(), "skills exportadas em "+root) {
+		t.Fatalf("faltou aviso de exportação:\n%s", out)
 	}
 }
 

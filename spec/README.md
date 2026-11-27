@@ -121,3 +121,6 @@ Toda implementação da CLI precisa respeitar:
 | Claude Code (`claude`) | `~/.claude/skills/<skill>/` | `.claude/skills/<skill>/` |
 | Codex CLI (`codex`) | só detecção | só detecção |
 | Gemini CLI (`gemini`) | só detecção | só detecção |
+| Grok Bot (`grok`), só exporta | `$XDG_CONFIG_HOME/atlana/exports/grok/skills/<skill>/` (padrão `~/.config/...`) | `.atlana/exports/grok/skills/<skill>/` |
+
+O Grok Bot não tem pasta local de skills: o adaptador exporta as skills sem mudanças, e a pessoa envia cada pasta pelo próprio Grok. O lock registra os arquivos exportados como qualquer outra instalação.

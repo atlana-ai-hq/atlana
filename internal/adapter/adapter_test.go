@@ -33,7 +33,7 @@ func TestDetect(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(env.Home, ".gemini"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"claude": true, "gemini": true, "cursor": false, "codex": false}
+	want := map[string]bool{"claude": true, "gemini": true, "cursor": false, "codex": false, "grok": false}
 	for _, ad := range All() {
 		if got := ad.Detect(env).Installed; got != want[ad.ID()] {
 			t.Errorf("%s: Installed = %v, esperado %v", ad.ID(), got, want[ad.ID()])
@@ -67,6 +67,8 @@ func TestSkillsRoot(t *testing.T) {
 		{"cursor", ScopeProject, filepath.Join(env.WorkDir, ".cursor", "skills")},
 		{"claude", ScopeUser, filepath.Join(env.Home, ".claude", "skills")},
 		{"claude", ScopeProject, filepath.Join(env.WorkDir, ".claude", "skills")},
+		{"grok", ScopeUser, filepath.Join(env.Home, ".config", "atlana", "exports", "grok", "skills")},
+		{"grok", ScopeProject, filepath.Join(env.WorkDir, ".atlana", "exports", "grok", "skills")},
 	}
 	for _, c := range cases {
 		ad, err := Get(c.id)
@@ -86,6 +88,47 @@ func TestSkillsRoot(t *testing.T) {
 		if _, err := ad.SkillsRoot(ScopeUser, env); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: esperava ErrUnsupported", id)
 		}
+	}
+}
+
+func TestGrok(t *testing.T) {
+	ad, err := Get("grok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsExporter(ad) || !ad.Supports(manifest.ModuleSkills) || ad.Supports(manifest.ModuleMCP) {
+		t.Fatal("grok deveria só exportar skills")
+	}
+	for _, id := range []string{"cursor", "claude"} {
+		if a, _ := Get(id); IsExporter(a) {
+			t.Errorf("%s não deveria ser exportador", id)
+		}
+	}
+
+	env := fakeEnv(t, "grok")
+	if d := ad.Detect(env); !d.Installed || d.Evidence[0] != "binário /usr/bin/grok" {
+		t.Errorf("detecção pelo binário falhou: %+v", d)
+	}
+	env = fakeEnv(t)
+	if err := os.Mkdir(filepath.Join(env.Home, ".grok"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !ad.Detect(env).Installed {
+		t.Error("detecção por ~/.grok falhou")
+	}
+
+	xdg := t.TempDir()
+	env.Getenv = func(k string) string {
+		if k == "XDG_CONFIG_HOME" {
+			return xdg
+		}
+		return ""
+	}
+	if got, _ := ad.SkillsRoot(ScopeUser, env); got != filepath.Join(xdg, "atlana", "exports", "grok", "skills") {
+		t.Errorf("XDG_CONFIG_HOME ignorado: %s", got)
+	}
+	if _, err := ad.SkillsRoot(ScopeUser, Env{}); err == nil {
+		t.Error("HOME vazio deveria dar erro")
 	}
 }
 

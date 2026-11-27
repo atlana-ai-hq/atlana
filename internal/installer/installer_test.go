@@ -277,3 +277,42 @@ func TestProjectScopeLock(t *testing.T) {
 		t.Fatal("skill deveria estar no projeto")
 	}
 }
+
+func TestGrokExport(t *testing.T) {
+	f := setup(t, "alpha")
+	root := filepath.Join(f.env.Home, ".config", "atlana", "exports", "grok", "skills")
+	p := f.plan(t, "grok")
+	if ops(p)[OpCreate] != 2 || len(p.Targets) != 1 || p.Targets[0].Root != root {
+		t.Fatalf("plano inesperado: %v %+v", ops(p), p.Targets)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("o plano não pode escrever no disco")
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	skill := filepath.Join(root, "alpha", "SKILL.md")
+	if _, err := os.Stat(filepath.Join(root, "alpha", "references", "guia.md")); err != nil {
+		t.Fatal("pasta da skill incompleta")
+	}
+
+	write(t, skill, "editado")
+	st, err := Status(f.env)
+	if err != nil || len(st) != 1 || st[0].Entry.Agent != "grok" || st[0].States[skill] != StateModified {
+		t.Fatalf("status inesperado: %+v %v", st, err)
+	}
+
+	u, err := PlanUninstall("demo", []string{"grok"}, adapter.ScopeUser, f.env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(skill); err != nil {
+		t.Fatal("arquivo editado deveria ser mantido")
+	}
+	if _, err := os.Stat(filepath.Join(root, "alpha", "references")); !os.IsNotExist(err) {
+		t.Fatal("arquivo intacto deveria ter sido removido")
+	}
+}

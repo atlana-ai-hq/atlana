@@ -118,6 +118,9 @@ func (a *App) doctor() error {
 		if d.Installed {
 			found = "sim"
 		}
+		if adapter.IsExporter(ad) {
+			found += " (só exporta)"
+		}
 		var mods []string
 		for _, m := range manifest.AllModules {
 			if ad.Supports(m) {
@@ -334,6 +337,7 @@ func (a *App) confirmAndApply(plan *installer.Plan, pf planFlags) error {
 			return err
 		}
 		fmt.Fprintln(a.Stdout, "\nTudo já está atualizado.")
+		printExports(a.Stdout, plan)
 		return nil
 	}
 	if !pf.yes {
@@ -353,7 +357,22 @@ func (a *App) confirmAndApply(plan *installer.Plan, pf planFlags) error {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "\nFeito. Lock: %s\n", plan.LockPath)
+	printExports(a.Stdout, plan)
 	return nil
+}
+
+// printExports avisa onde ficaram as skills de agentes que só exportam (ex.: Grok Bot).
+func printExports(w io.Writer, p *installer.Plan) {
+	if p.Kind != installer.KindInstall {
+		return
+	}
+	for _, t := range p.Targets {
+		ad, err := adapter.Get(t.Agent)
+		if err != nil || !adapter.IsExporter(ad) {
+			continue
+		}
+		fmt.Fprintf(w, "%s: skills exportadas em %s; envie cada pasta pelo próprio %s.\n", t.Agent, t.Root, ad.Name())
+	}
 }
 
 func printPlan(w io.Writer, p *installer.Plan) {

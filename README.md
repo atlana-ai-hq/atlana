@@ -88,11 +88,15 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 | Claude Code | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Codex CLI | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Gemini CLI | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
+
+No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent Skills) para `~/.config/atlana/exports/grok/skills/` (ou `.atlana/exports/grok/skills/` com `--scope project`), e você envia cada pasta pelo Grok. Lock, `status` e `uninstall` funcionam igual. Sem MCP remoto nem sync automático no v1 ([ADR 0002](docs/adr/0002-grok-exporta-skills.md)).
 
 ## Roadmap
 
 - [x] Spec v0.1 + JSON Schema, `validate`, `doctor`
 - [x] Planner, lockfile, `install`/`status`/`uninstall` de skills (Cursor, Claude Code)
+- [x] Exportação de skills para o Grok Bot
 - [ ] Skills no Codex e no Gemini CLI; rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/`.mdc`)
 - [ ] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
 - [ ] Hooks com shim de eventos genéricos; subagents
