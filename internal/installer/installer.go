@@ -4,6 +4,7 @@
 package installer
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -33,12 +34,13 @@ const (
 
 // Action é uma mudança planejada num arquivo.
 type Action struct {
-	Op     Op
-	Agent  string
-	Module manifest.Module
-	Path   string // destino absoluto
-	Source string // origem (vazio em remoções)
-	SHA256 string // hash do conteúdo final (ou do arquivo removido)
+	Op      Op
+	Agent   string
+	Module  manifest.Module
+	Path    string // destino absoluto
+	Source  string // origem (vazio em remoções e em conteúdo gerado)
+	Content []byte // conteúdo gerado pelo adaptador (no lugar de Source)
+	SHA256  string // hash do conteúdo final (ou do arquivo removido)
 }
 
 // Target é uma combinação agente+módulo tocada pelo plano.
@@ -148,6 +150,10 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				if err := planSkills(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
+			case manifest.ModuleRules:
+				if err := planRules(plan, lock, p, ad, req.Scope, req.Env); err != nil {
+					return nil, err
+				}
 			default:
 				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s ainda não implementado (pulado)", ad.ID(), m))
 			}
@@ -161,14 +167,7 @@ func planSkills(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ad
 	if err != nil {
 		return fmt.Errorf("%s: %w", ad.ID(), err)
 	}
-	plan.Targets = append(plan.Targets, Target{Agent: ad.ID(), Module: manifest.ModuleSkills, Root: root})
-
-	prev, _ := lock.Find(p.Name, ad.ID(), string(manifest.ModuleSkills))
-	owned := map[string]string{}
-	for _, f := range prev.Files {
-		owned[f.Path] = f.SHA256
-	}
-	planned := map[string]bool{}
+	fp := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleSkills, root)
 
 	for _, skill := range p.Modules.Skills {
 		src := p.SkillDir(skill)
@@ -186,38 +185,106 @@ func planSkills(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ad
 			if err != nil {
 				return err
 			}
-			dest := filepath.Join(root, skill, rel)
 			sum, err := hashFile(path)
 			if err != nil {
 				return err
 			}
-			planned[dest] = true
-			a := Action{Agent: ad.ID(), Module: manifest.ModuleSkills, Path: dest, Source: path, SHA256: sum}
-			cur, err := hashFile(dest)
-			switch {
-			case errors.Is(err, fs.ErrNotExist):
-				a.Op = OpCreate
-			case err != nil:
-				return err
-			case cur == sum:
-				a.Op = OpUnchanged
-			case owned[dest] == cur:
-				a.Op = OpUpdate
-			default:
-				plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %s já existe e não foi instalado pelo atlana (ou foi editado depois)", ad.ID(), dest))
-				return nil
-			}
-			plan.Actions = append(plan.Actions, a)
-			return nil
+			return fp.add(Action{Path: filepath.Join(root, skill, rel), Source: path, SHA256: sum})
 		})
 		if err != nil {
 			return err
 		}
 	}
+	return fp.finish()
+}
 
-	// Arquivos que eram nossos e saíram do pack: remover se ninguém editou.
+// planRules pede ao adaptador os arquivos de rules e planeja cada um como conteúdo gerado.
+func planRules(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapter, scope adapter.Scope, env adapter.Env) error {
+	ra, ok := ad.(adapter.RulesAdapter)
+	if !ok {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: rules ainda não é suportado pelo adaptador %s (pulado)", ad.ID(), ad.Name()))
+		return nil
+	}
+	root, err := ra.RulesRoot(scope, env)
+	if errors.Is(err, adapter.ErrUnsupported) {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %v (pulado)", ad.ID(), err))
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", ad.ID(), err)
+	}
+	files := make([]adapter.RuleFile, 0, len(p.Modules.Rules))
+	for _, r := range p.Modules.Rules {
+		b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(r)))
+		if err != nil {
+			return err
+		}
+		files = append(files, adapter.RuleFile{Rel: filepath.ToSlash(filepath.Clean(r)), Content: b})
+	}
+	outs, notes, err := ra.Rules(p.Name, files, scope, env)
+	if err != nil {
+		return fmt.Errorf("%s: %w", ad.ID(), err)
+	}
+	fp := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleRules, root)
+	for _, o := range outs {
+		h := sha256.Sum256(o.Content)
+		if err := fp.add(Action{Path: o.Path, Content: o.Content, SHA256: hex.EncodeToString(h[:])}); err != nil {
+			return err
+		}
+	}
+	if err := fp.finish(); err != nil {
+		return err
+	}
+	plan.Notes = append(plan.Notes, notes...)
+	return nil
+}
+
+// filePlanner decide criar/atualizar/igual/conflito por arquivo e remove o que saiu do pack.
+type filePlanner struct {
+	plan    *Plan
+	agent   string
+	module  manifest.Module
+	prev    lockfile.Entry
+	owned   map[string]string
+	planned map[string]bool
+}
+
+func newFilePlanner(plan *Plan, lock *lockfile.Lock, pack, agent string, module manifest.Module, root string) *filePlanner {
+	plan.Targets = append(plan.Targets, Target{Agent: agent, Module: module, Root: root})
+	prev, _ := lock.Find(pack, agent, string(module))
+	owned := map[string]string{}
 	for _, f := range prev.Files {
-		if planned[f.Path] {
+		owned[f.Path] = f.SHA256
+	}
+	return &filePlanner{plan: plan, agent: agent, module: module, prev: prev, owned: owned, planned: map[string]bool{}}
+}
+
+// add classifica a ação a partir do arquivo atual no destino (sem escrever nada).
+func (fp *filePlanner) add(a Action) error {
+	a.Agent, a.Module = fp.agent, fp.module
+	fp.planned[a.Path] = true
+	cur, err := hashFile(a.Path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		a.Op = OpCreate
+	case err != nil:
+		return err
+	case cur == a.SHA256:
+		a.Op = OpUnchanged
+	case fp.owned[a.Path] == cur:
+		a.Op = OpUpdate
+	default:
+		fp.plan.Conflicts = append(fp.plan.Conflicts, fmt.Sprintf("%s: %s já existe e não foi instalado pelo atlana (ou foi editado depois)", fp.agent, a.Path))
+		return nil
+	}
+	fp.plan.Actions = append(fp.plan.Actions, a)
+	return nil
+}
+
+// finish planeja a remoção de arquivos que eram nossos e saíram do pack, se ninguém editou.
+func (fp *filePlanner) finish() error {
+	for _, f := range fp.prev.Files {
+		if fp.planned[f.Path] {
 			continue
 		}
 		cur, err := hashFile(f.Path)
@@ -226,9 +293,9 @@ func planSkills(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ad
 		case err != nil:
 			return err
 		case cur == f.SHA256:
-			plan.Actions = append(plan.Actions, Action{Op: OpRemove, Agent: ad.ID(), Module: manifest.ModuleSkills, Path: f.Path, SHA256: cur})
+			fp.plan.Actions = append(fp.plan.Actions, Action{Op: OpRemove, Agent: fp.agent, Module: fp.module, Path: f.Path, SHA256: cur})
 		default:
-			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s saiu do pack mas foi editado; mantido", ad.ID(), f.Path))
+			fp.plan.Notes = append(fp.plan.Notes, fmt.Sprintf("%s: %s saiu do pack mas foi editado; mantido", fp.agent, f.Path))
 		}
 	}
 	return nil
@@ -292,7 +359,12 @@ func Apply(plan *Plan, now time.Time) error {
 	for _, a := range plan.Actions {
 		switch a.Op {
 		case OpCreate, OpUpdate:
-			if err := copyFile(a.Source, a.Path); err != nil {
+			if a.Content != nil {
+				err = writeFile(a.Path, a.Content)
+			} else {
+				err = copyFile(a.Source, a.Path)
+			}
+			if err != nil {
 				return err
 			}
 		case OpRemove:
@@ -392,29 +464,38 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	mode := fs.FileMode(0o644)
+	if st.Mode()&0o111 != 0 {
+		mode = 0o755
+	}
+	return writeAtomic(dst, in, mode)
+}
+
+// writeFile grava conteúdo gerado de forma atômica.
+func writeFile(dst string, content []byte) error {
+	return writeAtomic(dst, bytes.NewReader(content), 0o644)
+}
+
+func writeAtomic(dst string, r io.Reader, mode fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(dst), ".atlana-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
-	if _, err := io.Copy(tmp, in); err != nil {
+	if _, err := io.Copy(tmp, r); err != nil {
 		tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
-	}
-	mode := fs.FileMode(0o644)
-	if st.Mode()&0o111 != 0 {
-		mode = 0o755
 	}
 	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return err

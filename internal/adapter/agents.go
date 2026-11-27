@@ -18,7 +18,9 @@ func (cursor) Name() string { return "Cursor" }
 func (cursor) Detect(env Env) Detection {
 	return detectBy(env, []string{"cursor", "cursor-agent"}, []string{filepath.Join(env.Home, ".cursor")})
 }
-func (cursor) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (cursor) Supports(m manifest.Module) bool {
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules
+}
 func (cursor) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".cursor", "skills")
 }
@@ -31,7 +33,9 @@ func (claude) Name() string { return "Claude Code" }
 func (claude) Detect(env Env) Detection {
 	return detectBy(env, []string{"claude"}, []string{filepath.Join(env.Home, ".claude")})
 }
-func (claude) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (claude) Supports(m manifest.Module) bool {
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules
+}
 func (claude) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".claude", "skills")
 }
@@ -51,7 +55,9 @@ func (codex) Detect(env Env) Detection {
 	}
 	return detectBy(env, []string{"codex"}, []string{dir})
 }
-func (codex) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (codex) Supports(m manifest.Module) bool {
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules
+}
 func (codex) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".agents", "skills")
 }
@@ -64,7 +70,9 @@ func (gemini) Name() string { return "Gemini CLI" }
 func (gemini) Detect(env Env) Detection {
 	return detectBy(env, []string{"gemini"}, []string{filepath.Join(env.Home, ".gemini")})
 }
-func (gemini) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (gemini) Supports(m manifest.Module) bool {
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules
+}
 func (gemini) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".gemini", "skills")
 }

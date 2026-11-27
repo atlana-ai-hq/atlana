@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -346,5 +347,87 @@ func TestGeminiProjectScope(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.env.Home, ".gemini")); !os.IsNotExist(err) {
 		t.Fatal("escopo project não pode tocar no HOME")
+	}
+}
+
+func setupRules(t *testing.T) fixture {
+	t.Helper()
+	f := setup(t, "alpha")
+	write(t, filepath.Join(f.pack.Dir, "AGENTS.md"), "# Regras do demo\n")
+	f.pack.Modules.Rules = []string{"AGENTS.md"}
+	return f
+}
+
+func (f fixture) planScope(t *testing.T, scope adapter.Scope, mods []manifest.Module, ids ...string) *Plan {
+	t.Helper()
+	p, err := PlanInstall(InstallRequest{Pack: f.pack, Agents: agents(t, ids...), Modules: mods, Scope: scope, Env: f.env})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestRulesInstallAndUninstall(t *testing.T) {
+	f := setupRules(t)
+	userClaude := filepath.Join(f.env.WorkDir, "CLAUDE.md")
+	write(t, userClaude, "meu CLAUDE.md")
+	rules := []manifest.Module{manifest.ModuleRules}
+
+	p := f.planScope(t, adapter.ScopeProject, rules, "claude", "cursor", "gemini", "codex")
+	if ops(p)[OpCreate] != 4 || len(p.Conflicts) != 0 {
+		t.Fatalf("plano inesperado: %v %v", ops(p), p.Conflicts)
+	}
+	if len(p.Notes) != 2 { // gemini (@import) e codex (referência manual)
+		t.Fatalf("notas inesperadas: %v", p.Notes)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	claudeRule := filepath.Join(f.env.WorkDir, ".claude", "rules", "atlana-demo", "AGENTS.md")
+	if b, _ := os.ReadFile(claudeRule); string(b) != "# Regras do demo\n" {
+		t.Fatalf("rule do claude: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, ".cursor", "rules", "atlana-demo-AGENTS.mdc")); !strings.Contains(string(b), "alwaysApply: true") {
+		t.Fatalf("mdc: %q", b)
+	}
+	if b, _ := os.ReadFile(userClaude); string(b) != "meu CLAUDE.md" {
+		t.Fatal("CLAUDE.md da pessoa não pode mudar")
+	}
+	if again := f.planScope(t, adapter.ScopeProject, rules, "claude", "cursor", "gemini", "codex"); again.Changes() != 0 {
+		t.Fatalf("reinstalar deveria ser idempotente: %v", ops(again))
+	}
+
+	u, err := PlanUninstall("demo", nil, adapter.ScopeProject, f.env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(claudeRule)); !os.IsNotExist(err) {
+		t.Fatal("pasta atlana-demo deveria ter sido removida")
+	}
+	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".claude", "rules")); err != nil {
+		t.Fatal("a raiz .claude/rules não deve ser apagada")
+	}
+}
+
+func TestRulesConflictAndCursorUserScope(t *testing.T) {
+	f := setupRules(t)
+	write(t, filepath.Join(f.env.Home, ".claude", "rules", "atlana-demo", "AGENTS.md"), "de outra pessoa")
+	p := f.planScope(t, adapter.ScopeUser, []manifest.Module{manifest.ModuleRules}, "claude", "cursor")
+	if len(p.Conflicts) != 1 || !errors.Is(Apply(p, now), ErrConflicts) {
+		t.Fatalf("esperava 1 conflito: %v", p.Conflicts)
+	}
+	if len(p.Notes) != 1 || !strings.Contains(p.Notes[0], "cursor") {
+		t.Fatalf("cursor no escopo user deveria virar nota: %v", p.Notes)
+	}
+}
+
+func TestGrokSkipsRules(t *testing.T) {
+	f := setupRules(t)
+	p := f.plan(t, "grok")
+	if ops(p)[OpCreate] != 2 || len(p.Notes) != 1 { // só as skills
+		t.Fatalf("grok: %v %v", ops(p), p.Notes)
 	}
 }

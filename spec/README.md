@@ -7,7 +7,7 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | Conteúdo | Padrão usado | Status na v0.1 |
 |---|---|---|
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
-| Rules | `AGENTS.md` (fonte); `CLAUDE.md`, `GEMINI.md` e `.mdc` são gerados | validado (existência), instalação futura |
+| Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex) |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves), instalação futura |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado (existência), instalação futura |
 | Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado (existência), instalação futura |
@@ -124,3 +124,16 @@ Toda implementação da CLI precisa respeitar:
 | Grok Bot (`grok`), só exporta | `$XDG_CONFIG_HOME/atlana/exports/grok/skills/<skill>/` (padrão `~/.config/...`) | `.atlana/exports/grok/skills/<skill>/` |
 
 O Grok Bot não tem pasta local de skills: o adaptador exporta as skills sem mudanças, e a pessoa envia cada pasta pelo próprio Grok. O lock registra os arquivos exportados como qualquer outra instalação.
+
+## 8. Onde cada agente recebe rules (v0.1)
+
+Cada arquivo de `modules.rules` é instalado como arquivo próprio do Atlana. O `CLAUDE.md`, o `GEMINI.md` e o `AGENTS.md` da pessoa nunca são tocados (ADR 0003).
+
+| Agente | `--scope user` | `--scope project` | Ativação |
+|---|---|---|---|
+| Claude Code (`claude`) | `~/.claude/rules/atlana-<pack>/<arquivo>` | `.claude/rules/atlana-<pack>/<arquivo>` | automática |
+| Cursor (`cursor`) | não suportado (rules de usuário ficam no app) | `.cursor/rules/atlana-<pack>-<slug>.mdc` | automática (`alwaysApply: true`) |
+| Gemini CLI (`gemini`) | `~/.gemini/atlana/atlana-<pack>/<arquivo>` | `.gemini/atlana/atlana-<pack>/<arquivo>` | a CLI mostra a linha `@...` para o `GEMINI.md` |
+| Codex CLI (`codex`) | `$CODEX_HOME/atlana/atlana-<pack>/<arquivo>` (padrão `~/.codex`) | `.codex/atlana/atlana-<pack>/<arquivo>` | manual, no `AGENTS.md` |
+
+No `.mdc` do Cursor, o `<slug>` é o caminho sem extensão com `/` trocado por `-`, e um frontmatter do arquivo de origem é substituído pelo do Cursor.

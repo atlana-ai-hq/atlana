@@ -2,7 +2,7 @@
 
 **Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta para o Grok Bot). Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills** e **rules** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta para o Grok Bot). Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -84,13 +84,15 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 
 | Agente | Detecção | Skills | Rules | Subagents | Hooks | MCP |
 |---|---|---|---|---|---|---|
-| Cursor | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Claude Code | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Codex CLI | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Gemini CLI | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | ⏳ | ⏳ |
+| Claude Code | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ |
+| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | ⏳ | ⏳ |
+| Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ⏳ | ⏳ | ⏳ |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
 
 No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent Skills) para `~/.config/atlana/exports/grok/skills/` (ou `.atlana/exports/grok/skills/` com `--scope project`), e você envia cada pasta pelo Grok. Lock, `status` e `uninstall` funcionam igual. Sem MCP remoto nem sync automático no v1 ([ADR 0002](docs/adr/0002-grok-exporta-skills.md)).
+
+Rules nunca mexem no seu `CLAUDE.md`, `GEMINI.md` ou `AGENTS.md`: o Atlana grava só arquivos próprios. No Claude Code e no Cursor eles são carregados sozinhos; no Gemini CLI a CLI mostra a linha `@...` para importar no `GEMINI.md`; no Codex você referencia o arquivo no seu `AGENTS.md` ([ADR 0003](docs/adr/0003-rules-em-arquivos-proprios.md)).
 
 ## Roadmap
 
@@ -99,7 +101,7 @@ No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent 
 - [x] Exportação de skills para o Grok Bot
 - [x] Skills no Gemini CLI
 - [x] Skills no Codex
-- [ ] rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/`.mdc`)
+- [x] Rules em arquivos próprios (Claude Code, Cursor, Gemini CLI, Codex)
 - [ ] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
 - [ ] Hooks com shim de eventos genéricos; subagents
 - [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
@@ -135,4 +137,4 @@ atlana doctor
 atlana install packs/hello --only skills --agent cursor,claude --dry-run
 ```
 
-Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot); rules, MCP, hooks and subagents are on the roadmap. MIT licensed.
+Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot), plus rules; MCP, hooks and subagents are on the roadmap. MIT licensed.
