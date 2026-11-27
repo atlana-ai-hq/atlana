@@ -67,6 +67,8 @@ func TestSkillsRoot(t *testing.T) {
 		{"cursor", ScopeProject, filepath.Join(env.WorkDir, ".cursor", "skills")},
 		{"claude", ScopeUser, filepath.Join(env.Home, ".claude", "skills")},
 		{"claude", ScopeProject, filepath.Join(env.WorkDir, ".claude", "skills")},
+		{"codex", ScopeUser, filepath.Join(env.Home, ".agents", "skills")},
+		{"codex", ScopeProject, filepath.Join(env.WorkDir, ".agents", "skills")},
 		{"gemini", ScopeUser, filepath.Join(env.Home, ".gemini", "skills")},
 		{"gemini", ScopeProject, filepath.Join(env.WorkDir, ".gemini", "skills")},
 		{"grok", ScopeUser, filepath.Join(env.Home, ".config", "atlana", "exports", "grok", "skills")},
@@ -80,15 +82,6 @@ func TestSkillsRoot(t *testing.T) {
 		got, err := ad.SkillsRoot(c.scope, env)
 		if err != nil || got != c.want {
 			t.Errorf("%s/%s = %q, %v; esperado %q", c.id, c.scope, got, err, c.want)
-		}
-	}
-	for _, id := range []string{"codex"} {
-		ad, _ := Get(id)
-		if ad.Supports(manifest.ModuleSkills) {
-			t.Errorf("%s ainda não deveria suportar skills", id)
-		}
-		if _, err := ad.SkillsRoot(ScopeUser, env); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("%s: esperava ErrUnsupported", id)
 		}
 	}
 }

@@ -36,7 +36,8 @@ func (claude) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".claude", "skills")
 }
 
-// codex: por enquanto só detecção. Respeita $CODEX_HOME.
+// codex: skills em ~/.agents/skills ou <projeto>/.agents/skills (caminho de Agent
+// Skills que o Codex lê). A detecção respeita $CODEX_HOME.
 type codex struct{}
 
 func (codex) ID() string   { return "codex" }
@@ -50,9 +51,9 @@ func (codex) Detect(env Env) Detection {
 	}
 	return detectBy(env, []string{"codex"}, []string{dir})
 }
-func (codex) Supports(manifest.Module) bool { return false }
-func (codex) SkillsRoot(Scope, Env) (string, error) {
-	return "", ErrUnsupported
+func (codex) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (codex) SkillsRoot(scope Scope, env Env) (string, error) {
+	return scopedDir(scope, env, ".agents", "skills")
 }
 
 // gemini: skills em ~/.gemini/skills ou <projeto>/.gemini/skills (Agent Skills nativo).

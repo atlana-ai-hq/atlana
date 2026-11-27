@@ -6,7 +6,7 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 
 | Conteúdo | Padrão usado | Status na v0.1 |
 |---|---|---|
-| Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Gemini CLI; exportado para o Grok Bot) |
+| Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
 | Rules | `AGENTS.md` (fonte); `CLAUDE.md`, `GEMINI.md` e `.mdc` são gerados | validado (existência), instalação futura |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves), instalação futura |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado (existência), instalação futura |
@@ -119,7 +119,7 @@ Toda implementação da CLI precisa respeitar:
 |---|---|---|
 | Cursor (`cursor`) | `~/.cursor/skills/<skill>/` | `.cursor/skills/<skill>/` |
 | Claude Code (`claude`) | `~/.claude/skills/<skill>/` | `.claude/skills/<skill>/` |
-| Codex CLI (`codex`) | só detecção | só detecção |
+| Codex CLI (`codex`) | `~/.agents/skills/<skill>/` | `.agents/skills/<skill>/` |
 | Gemini CLI (`gemini`) | `~/.gemini/skills/<skill>/` | `.gemini/skills/<skill>/` |
 | Grok Bot (`grok`), só exporta | `$XDG_CONFIG_HOME/atlana/exports/grok/skills/<skill>/` (padrão `~/.config/...`) | `.atlana/exports/grok/skills/<skill>/` |
 

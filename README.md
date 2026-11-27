@@ -2,7 +2,7 @@
 
 **Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills** no Cursor, no Claude Code e no Gemini CLI (e exporta para o Grok Bot). Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta para o Grok Bot). Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -86,7 +86,7 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 |---|---|---|---|---|---|---|
 | Cursor | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Claude Code | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Codex CLI | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Codex CLI | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Gemini CLI | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
 
@@ -98,7 +98,8 @@ No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent 
 - [x] Planner, lockfile, `install`/`status`/`uninstall` de skills (Cursor, Claude Code)
 - [x] Exportação de skills para o Grok Bot
 - [x] Skills no Gemini CLI
-- [ ] Skills no Codex; rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/`.mdc`)
+- [x] Skills no Codex
+- [ ] rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/`.mdc`)
 - [ ] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
 - [ ] Hooks com shim de eventos genéricos; subagents
 - [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
@@ -134,4 +135,4 @@ atlana doctor
 atlana install packs/hello --only skills --agent cursor,claude --dry-run
 ```
 
-Status: v0.1. Skills install into Cursor, Claude Code and Gemini CLI today (and export for Grok Bot); Codex, rules, MCP, hooks and subagents are on the roadmap. MIT licensed.
+Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot); rules, MCP, hooks and subagents are on the roadmap. MIT licensed.

@@ -233,10 +233,25 @@ func TestUninstallOnlyOneAgent(t *testing.T) {
 	}
 }
 
+// detectOnly é um agente que ainda não instala nada.
+type detectOnly struct{}
+
+func (detectOnly) ID() string                           { return "fake" }
+func (detectOnly) Name() string                         { return "Fake" }
+func (detectOnly) Detect(adapter.Env) adapter.Detection { return adapter.Detection{} }
+func (detectOnly) Supports(manifest.Module) bool        { return false }
+func (detectOnly) SkillsRoot(adapter.Scope, adapter.Env) (string, error) {
+	return "", adapter.ErrUnsupported
+}
+
 func TestUnsupportedAndExcludedAgents(t *testing.T) {
 	f := setup(t, "alpha")
 	f.pack.Targets.Exclude = []string{"claude"}
-	p := f.plan(t, "codex", "claude")
+	ads := append([]adapter.Adapter{detectOnly{}}, agents(t, "claude")...)
+	p, err := PlanInstall(InstallRequest{Pack: f.pack, Agents: ads, Scope: adapter.ScopeUser, Env: f.env})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(p.Actions) != 0 || len(p.Notes) != 2 {
 		t.Fatalf("esperava 0 ações e 2 notas: %+v %v", p.Actions, p.Notes)
 	}
