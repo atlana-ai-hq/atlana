@@ -55,7 +55,7 @@ func (codex) SkillsRoot(Scope, Env) (string, error) {
 	return "", ErrUnsupported
 }
 
-// gemini: por enquanto só detecção.
+// gemini: skills em ~/.gemini/skills ou <projeto>/.gemini/skills (Agent Skills nativo).
 type gemini struct{}
 
 func (gemini) ID() string   { return "gemini" }
@@ -63,7 +63,7 @@ func (gemini) Name() string { return "Gemini CLI" }
 func (gemini) Detect(env Env) Detection {
 	return detectBy(env, []string{"gemini"}, []string{filepath.Join(env.Home, ".gemini")})
 }
-func (gemini) Supports(manifest.Module) bool { return false }
-func (gemini) SkillsRoot(Scope, Env) (string, error) {
-	return "", ErrUnsupported
+func (gemini) Supports(m manifest.Module) bool { return m == manifest.ModuleSkills }
+func (gemini) SkillsRoot(scope Scope, env Env) (string, error) {
+	return scopedDir(scope, env, ".gemini", "skills")
 }

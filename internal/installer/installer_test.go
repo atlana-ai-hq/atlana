@@ -316,3 +316,20 @@ func TestGrokExport(t *testing.T) {
 		t.Fatal("arquivo intacto deveria ter sido removido")
 	}
 }
+
+func TestGeminiProjectScope(t *testing.T) {
+	f := setup(t, "alpha")
+	p, err := PlanInstall(InstallRequest{Pack: f.pack, Agents: agents(t, "gemini"), Scope: adapter.ScopeProject, Env: f.env})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".gemini", "skills", "alpha", "SKILL.md")); err != nil {
+		t.Fatal("skill não instalada no gemini")
+	}
+	if _, err := os.Stat(filepath.Join(f.env.Home, ".gemini")); !os.IsNotExist(err) {
+		t.Fatal("escopo project não pode tocar no HOME")
+	}
+}
