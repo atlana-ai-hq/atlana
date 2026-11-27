@@ -193,3 +193,19 @@ projects:
 ```
 
 `atlana registry list` só mostra projetos `private` quando `git ls-remote` consegue acessá-los com a autenticação atual (`--all` mostra todos, com o estado). Campos desconhecidos são erro, e isso inclui qualquer tentativa de guardar um token.
+
+## 12. Plugins nativos: `atlana build` (v0.1)
+
+`atlana build <pack> --target <t>[,<t>] [--out dist] [--only …]` gera um artefato por target em `<out>/<target>/<nome>/`, para quem não quer a CLI. Os hooks só entram com `--only hooks`, como no `install`.
+
+| Target | Manifesto | Skills | Rules | Subagents | Hooks | MCP |
+|---|---|---|---|---|---|---|
+| `claude-plugin` | `.claude-plugin/plugin.json` | `skills/` | não (plugins não carregam `CLAUDE.md`) | `agents/` | `hooks/hooks.json` | `.mcp.json` (`${CLAUDE_PLUGIN_ROOT}`) |
+| `gemini-extension` | `gemini-extension.json` | `skills/` | `GEMINI.md` (`contextFileName`) | `agents/` | `hooks/hooks.json` | no manifesto (`${extensionPath}`) |
+| `cursor-plugin` | `.cursor-plugin/plugin.json` | `skills/` | `rules/*.mdc` | não | `fallback` (`rule` vira `.mdc`) | `mcp.json` (sem servidores que usam `${PLUGIN_ROOT}`) |
+| `agent-plugin` | `plugin.json` (Agent Plugins 1.0.0) | `skills/` | não | não | não | `mcp.json` (só servidores sem `${VAR}`) |
+
+- **Hooks em plugin:** chamam `atlana hook dispatch` com a pasta `hooks/atlana` do plugin, então quem instala precisa do `atlana` no PATH.
+- **`agent-plugin`:** segue os campos fechados da spec e os `$schema` exatos. Como a spec não expande variáveis de ambiente e proíbe segredos, servidores que dependem de `${VAR}` ficam de fora, com aviso.
+- **Arquivos de apoio:** arquivos e pastas do pack fora dos módulos (ex.: `bin/`, `LICENSE`, `README.md`) são copiados para a raiz do artefato. Sem `README.md` no pack, o build gera um.
+- **Sobrescrita:** o diretório de saída só é substituído se tiver o marcador `.atlana-build.json`; qualquer outro conteúdo é recusado.

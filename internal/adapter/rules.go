@@ -65,11 +65,17 @@ func (c cursor) Rules(pack string, files []RuleFile, scope Scope, env Env) ([]Ru
 	}
 	out := make([]RuleOutput, 0, len(files))
 	for _, f := range files {
-		slug := strings.ReplaceAll(strings.TrimSuffix(f.Rel, filepath.Ext(f.Rel)), "/", "-")
-		body := fmt.Sprintf("---\ndescription: %s (%s, instalado pelo atlana)\nalwaysApply: true\n---\n\n%s", f.Rel, pack, stripFrontmatter(f.Content))
-		out = append(out, RuleOutput{Path: filepath.Join(root, "atlana-"+pack+"-"+slug+".mdc"), Content: []byte(body)})
+		name, body := CursorRule(pack, f)
+		out = append(out, RuleOutput{Path: filepath.Join(root, name), Content: body})
 	}
 	return out, nil, nil
+}
+
+// CursorRule gera o .mdc (alwaysApply) de uma rule: nome do arquivo e conteúdo.
+func CursorRule(pack string, f RuleFile) (string, []byte) {
+	slug := strings.ReplaceAll(strings.TrimSuffix(f.Rel, filepath.Ext(f.Rel)), "/", "-")
+	body := fmt.Sprintf("---\ndescription: %s (%s, instalado pelo atlana)\nalwaysApply: true\n---\n\n%s", f.Rel, pack, stripFrontmatter(f.Content))
+	return "atlana-" + pack + "-" + slug + ".mdc", []byte(body)
 }
 
 // gemini: <base>/.gemini/atlana/<pack>/; a pessoa importa com @ no GEMINI.md.

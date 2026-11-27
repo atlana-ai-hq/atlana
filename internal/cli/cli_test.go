@@ -199,3 +199,25 @@ func TestRepoHasNothingPrivate(t *testing.T) {
 		t.Fatalf("o repo tem pack privado: %d\n%s%s", code, out, errb)
 	}
 }
+
+func TestBuildCommand(t *testing.T) {
+	app, out, errb := newApp(t)
+	if code := app.Run([]string{"build", helloPack, "--target", "claude-plugin,agent-plugin"}); code != 0 {
+		t.Fatalf("code=%d\n%s%s", code, out, errb)
+	}
+	for _, p := range []string{
+		filepath.Join("dist", "claude-plugin", "hello", ".claude-plugin", "plugin.json"),
+		filepath.Join("dist", "claude-plugin", "hello", "skills", "conventional-commit-message", "SKILL.md"),
+		filepath.Join("dist", "agent-plugin", "hello", "plugin.json"),
+	} {
+		if _, err := os.Stat(filepath.Join(app.Env.WorkDir, p)); err != nil {
+			t.Errorf("faltou %s", p)
+		}
+	}
+	if code := app.Run([]string{"build", helloPack, "--target", "vscode"}); code != 2 {
+		t.Fatalf("target inválido: %d", code)
+	}
+	if code := app.Run([]string{"build", helloPack}); code != 2 {
+		t.Fatalf("sem --target: %d", code)
+	}
+}

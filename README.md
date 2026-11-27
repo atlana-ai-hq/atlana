@@ -100,6 +100,8 @@ Servidores MCP entram por merge na config do agente (`~/.claude.json`/`.mcp.json
 
 Packs remotos: `atlana install github:owner/repo//caminho@ref` busca com o seu `git` (repos privados funcionam com `gh auth login` ou SSH), guarda em cache e grava no lock o commit exato. O registry local (`atlana registry add|list|remove`, em `~/.config/atlana/hub.yaml`) dá nomes curtos às origens (`atlana install meus-packs//packs/work`) e esconde os privados que você não acessa ([ADR 0006](docs/adr/0006-origens-remotas-e-registry.md)).
 
+Quem não quer a CLI pode receber plugins nativos: `atlana build meu-pack --target claude-plugin,gemini-extension,cursor-plugin,agent-plugin` gera cada um em `dist/` ([ADR 0007](docs/adr/0007-build-de-plugins-nativos.md)).
+
 Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e a config do agente ganha um item por evento que chama `atlana hook dispatch`. O dispatcher normaliza o payload, aplica `match` e repassa `exit 2` (negar). Instale a CLI com `go install`, porque o caminho do binário fica gravado na config. Agentes sem hooks seguem o `fallback` do hook (`rule`, `skip` ou `fail`) ([ADR 0005](docs/adr/0005-subagents-e-hooks-com-dispatcher.md)).
 
 ## Roadmap
@@ -112,7 +114,7 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] Rules em arquivos próprios (Claude Code, Cursor, Gemini CLI, Codex)
 - [x] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)
 - [x] Hooks com dispatcher de eventos genéricos e subagents (Claude Code, Gemini CLI)
-- [ ] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
+- [x] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
 - [x] Origens `github:owner/repo//caminho@ref` e registry local (`atlana registry`)
 - [x] `atlana scan`, configuração de release (GoReleaser + Homebrew), template e guias de autoria/migração
 - [ ] Primeiro release publicado (tap, assinatura no macOS, workflow)

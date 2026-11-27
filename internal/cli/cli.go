@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/atlana-ai-hq/atlana/internal/adapter"
+	"github.com/atlana-ai-hq/atlana/internal/build"
 	"github.com/atlana-ai-hq/atlana/internal/hookrun"
 	"github.com/atlana-ai-hq/atlana/internal/installer"
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
@@ -62,6 +63,8 @@ Comandos:
   registry list [--all]         projetos do registry local (privados só com acesso)
   registry add <nome> <origem> [--private]
   registry remove <nome>
+  build <pack> --target <t>     gera plugin nativo em dist/: claude-plugin, cursor-plugin,
+                                gemini-extension, agent-plugin (--out, --only)
   scan [caminho] [--show]       procura nomes privados (lista local) e packs privados antes de publicar
   hook dispatch [flags]         uso interno: chamado pelos agentes quando um hook dispara
 
@@ -98,6 +101,8 @@ func (a *App) Run(args []string) int {
 		err = a.registry(args[1:])
 	case "scan":
 		err = a.scan(args[1:])
+	case "build":
+		err = a.build(args[1:])
 	case "status":
 		err = a.status()
 	case "help", "--help", "-h":
@@ -706,5 +711,66 @@ func (a *App) scan(args []string) error {
 		return fmt.Errorf("%w (%d achado(s))", ErrFindings, len(found))
 	}
 	fmt.Fprintf(a.Stdout, "ok: nada privado em %s (%d nome(s) checado(s))\n", root, len(names))
+	return nil
+}
+
+func (a *App) build(args []string) error {
+	const use = "use `atlana build <pack> --target claude-plugin,gemini-extension [--out dist] [--only skills,hooks]`"
+	fs := flag.NewFlagSet("build", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	targets := fs.String("target", "", "targets separados por vírgula")
+	out := fs.String("out", "dist", "diretório de saída")
+	only := fs.String("only", "", "módulos; hooks só entram quando pedidos aqui")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil || len(pos) != 1 || *targets == "" {
+		return fmt.Errorf("%w: %s", ErrUsage, use)
+	}
+	var ts []build.Target
+	for _, s := range splitList(*targets) {
+		t, err := build.ParseTarget(s)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrUsage, err)
+		}
+		ts = append(ts, t)
+	}
+	var modules []manifest.Module
+	for _, m := range splitList(*only) {
+		mod, err := manifest.ParseModule(m)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrUsage, err)
+		}
+		modules = append(modules, mod)
+	}
+	dir, _, err := a.resolvePack(pos[0])
+	if err != nil {
+		return err
+	}
+	pack, rep, err := manifest.Load(dir)
+	if err != nil {
+		if rep != nil {
+			for _, is := range rep.Issues {
+				fmt.Fprintln(a.Stderr, "  "+is.String())
+			}
+		}
+		return fmt.Errorf("não dá para gerar %s: %w", pos[0], err)
+	}
+	outDir := *out
+	if !filepath.IsAbs(outDir) {
+		outDir = filepath.Join(a.Env.WorkDir, outDir)
+	}
+	for _, t := range ts {
+		res, err := build.Build(pack, t, modules)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t, err)
+		}
+		dst, err := build.Write(res, outDir, Version)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t, err)
+		}
+		fmt.Fprintf(a.Stdout, "%s: %d arquivo(s) em %s\n", t, len(res.Files), dst)
+		for _, n := range res.Notes {
+			fmt.Fprintln(a.Stdout, "  nota:", n)
+		}
+	}
 	return nil
 }
