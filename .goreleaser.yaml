@@ -69,7 +69,7 @@ homebrew_casks:
     repository:
       owner: atlana-ai-hq
       name: homebrew-tap
-      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
     skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
     homepage: https://github.com/atlana-ai-hq/atlana
     description: Um formato, todos os agentes. Instala skills, rules, MCP, subagents e hooks em agentes de IA.
