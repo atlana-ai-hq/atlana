@@ -36,6 +36,21 @@ jobs:
       - name: atlana validate packs
         run: go run ./cmd/atlana validate packs
 
+      - name: atlana validate templates
+        run: go run ./cmd/atlana validate templates
+
+      - name: atlana scan
+        env:
+          ATLANA_PRIVATE_NAMES: ${{ secrets.ATLANA_PRIVATE_NAMES }}
+        run: go run ./cmd/atlana scan .
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
+
       - name: gitleaks
         env:
           GITLEAKS_VERSION: 8.30.1

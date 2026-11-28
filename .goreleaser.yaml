@@ -9,6 +9,7 @@ before:
     - go mod tidy
     - go test ./...
     - go run ./cmd/atlana validate packs
+    - go run ./cmd/atlana validate templates
 
 builds:
   - id: atlana
@@ -46,16 +47,30 @@ changelog:
       - "^test:"
       - "^chore:"
 
-# Cask no tap atlana-ai-hq/homebrew-tap (o repositório precisa existir).
-# O token vem de HOMEBREW_TAP_GITHUB_TOKEN no CI; nunca fica neste arquivo.
-# No macOS, o binário sem assinatura/notarização é bloqueado pelo Gatekeeper;
-# assine e notarize (seção notarize do GoReleaser) antes do primeiro release.
+# macOS: assina e notariza só quando os secrets da Apple existem (ver
+# docs/release.md). Sem eles, o release sai sem assinatura e o Gatekeeper
+# bloqueia o binário baixado no macOS: não contorne removendo a quarentena.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+
+# Cask no tap atlana-ai-hq/homebrew-tap. Só publica quando o token existe
+# (HOMEBREW_TAP_GITHUB_TOKEN no CI); o token nunca fica neste arquivo.
 homebrew_casks:
   - name: atlana
     repository:
       owner: atlana-ai-hq
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
     homepage: https://github.com/atlana-ai-hq/atlana
     description: Um formato, todos os agentes. Instala skills, rules, MCP, subagents e hooks em agentes de IA.
     license: MIT

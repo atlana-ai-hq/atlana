@@ -22,14 +22,7 @@ O CI também roda o **gitleaks** para segredos.
 
 O relatório mostra só `arquivo:linha` e o número do nome na lista, porque log de CI de repo público também é público. Use `--show` só localmente.
 
-Para ligar no CI, adicione um passo ao `.github/workflows/ci.yml`:
-
-```yaml
-      - name: atlana scan
-        env:
-          ATLANA_PRIVATE_NAMES: ${{ secrets.ATLANA_PRIVATE_NAMES }}
-        run: go run ./cmd/atlana scan .
-```
+O CI (`.github/workflows/ci.yml`) e o release rodam `atlana scan .` com esse secret.
 
 ## Binários e Homebrew
 
@@ -39,14 +32,27 @@ A configuração está em [`.goreleaser.yaml`](../.goreleaser.yaml):
 - **Arquivos:** `.tar.gz` (`.zip` no Windows), com `checksums.txt`.
 - **Homebrew:** cask no tap `atlana-ai-hq/homebrew-tap`.
 
-Antes do primeiro release:
+O workflow `.github/workflows/release.yml` roda em cada tag `v*`: `atlana scan` e depois `goreleaser release --clean`. O CI roda `goreleaser check` em todo push.
 
-1. Crie o repositório `atlana-ai-hq/homebrew-tap`.
-2. Crie um token com escrita nesse repositório e guarde como secret `HOMEBREW_TAP_GITHUB_TOKEN`.
-3. **macOS:** assine e notarize o binário (seção `notarize` do GoReleaser). Sem isso, o Gatekeeper bloqueia o binário baixado. Não contorne removendo a quarentena.
-4. Teste local, sem publicar: `goreleaser release --snapshot --clean`.
+### Secrets
 
-Um workflow de release que dispara em tags `v*` pode rodar `goreleaser/goreleaser-action` com `args: release --clean`, passando `GITHUB_TOKEN` e `HOMEBREW_TAP_GITHUB_TOKEN`.
+| Secret | Para quê | Sem ele |
+|---|---|---|
+| `GITHUB_TOKEN` | publicar o release (automático) | n/a |
+| `ATLANA_PRIVATE_NAMES` | lista do `atlana scan` | o scan só checa packs `private` |
+| `HOMEBREW_TAP_GITHUB_TOKEN` | publicar o cask no `atlana-ai-hq/homebrew-tap` (token com escrita só nesse repo) | o cask não é publicado |
+| `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD` | certificado Developer ID Application (`.p12` em base64) e a senha | o binário de macOS sai sem assinatura |
+| `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_KEY` | chave da App Store Connect API (`.p8` em base64) para notarizar | sem notarização |
+
+Sem assinatura e notarização, o Gatekeeper bloqueia o binário baixado no macOS. Não contorne removendo a quarentena: ligue os secrets da Apple antes de divulgar o `brew install`. Linux, Windows e `go install` não dependem disso.
+
+### Passo a passo
+
+1. Teste local, sem publicar: `goreleaser release --snapshot --clean`.
+2. Crie o repositório `atlana-ai-hq/homebrew-tap` e o secret `HOMEBREW_TAP_GITHUB_TOKEN`.
+3. Configure os secrets da Apple (precisa de conta no Apple Developer Program).
+4. `git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0`.
+5. Confira o release no GitHub e, com o tap, `brew install --cask atlana-ai-hq/tap/atlana`.
 
 ## Versões
 
