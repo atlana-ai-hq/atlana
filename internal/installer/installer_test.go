@@ -615,8 +615,27 @@ func TestSubagentsInstall(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, ".gemini", "agents", "planner.md")); !strings.Contains(string(b), "kind: local") {
 		t.Fatalf("gemini:\n%s", b)
 	}
-	if !strings.Contains(strings.Join(p.Notes, "\n"), "cursor: agents ainda não é suportado") {
+	if !strings.Contains(strings.Join(p.Notes, "\n"), "cursor: os subagents vêm de claude") {
 		t.Fatalf("cursor deveria ser pulado com nota: %v", p.Notes)
+	}
+	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".cursor", "agents", "planner.md")); err == nil {
+		t.Fatal("cursor não deveria duplicar o que lê de .claude/agents")
+	}
+
+	// Sem o Claude: Cursor em .cursor/agents (readonly) e Codex em .codex/agents (TOML).
+	g := setupAgentsHooks(t)
+	q := g.planScope(t, adapter.ScopeProject, []manifest.Module{manifest.ModuleAgents}, "cursor", "codex")
+	if err := Apply(q, now); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(g.env.WorkDir, ".cursor", "agents", "planner.md")); !strings.Contains(string(b), "readonly: true") || !strings.Contains(string(b), "model: inherit") {
+		t.Fatalf("cursor:\n%s", b)
+	}
+	b, _ := os.ReadFile(filepath.Join(g.env.WorkDir, ".codex", "agents", "planner.toml"))
+	for _, want := range []string{`name = "planner"`, "developer_instructions = ", "Não edite nem crie arquivos.", "[features]\nshell_tool = false"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("codex sem %q:\n%s", want, b)
+		}
 	}
 }
 

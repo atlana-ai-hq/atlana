@@ -31,7 +31,7 @@ Depois de instalar com o Atlana, apague a cópia antiga do seu `CLAUDE.md`, para
 
 ## 4. Subagents
 
-De `.claude/agents/<nome>.md` ou `.gemini/agents/<nome>.md` para `agents/<nome>.md`:
+De `.claude/agents/<nome>.md`, `.gemini/agents/<nome>.md`, `.cursor/agents/<nome>.md` ou `.codex/agents/<nome>.toml` (o `developer_instructions` vira o corpo) para `agents/<nome>.md`:
 
 | Antes (Claude) | Antes (Gemini) | No pack |
 |---|---|---|

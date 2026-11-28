@@ -2,7 +2,7 @@
 
 **Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI, no Antigravity e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), **skills** no Crush e no OpenCode, e **rules**, **MCP**, **subagents** e **hooks** no OpenCode, além de **subagents** e **hooks** no Claude Code e no Gemini CLI. No Antigravity: **skills**, **rules**, **MCP**, **subagents**, **hooks** e **commands** (como skills). Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), **skills** no Crush e no OpenCode, e **rules**, **MCP**, **subagents** e **hooks** no OpenCode, além de **subagents** e **hooks** no Claude Code e no Gemini CLI e **subagents** no Cursor e no Codex. No Antigravity: **skills**, **rules**, **MCP**, **subagents**, **hooks** e **commands** (como skills). Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -93,9 +93,9 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 
 | Agente | Detecção | Skills | Rules | Subagents | Hooks | MCP | Commands |
 |---|---|---|---|---|---|---|---|
-| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | fallback | ✅ | ✅ |
+| Cursor | ✅ | ✅ | ✅ (project) | ✅ | fallback | ✅ | ✅ |
 | Claude Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ | ➖ (use skills) |
+| Codex CLI | ✅ | ✅ | ✅ (manual) | ✅ (TOML) | fallback | ✅ | ➖ (use skills) |
 | Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ | ✅ (TOML) |
 | Antigravity (`agy`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (user) | ✅ (vira skill) |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
@@ -167,4 +167,4 @@ atlana install packs/hello --only skills --agent cursor,claude --dry-run
 
 On macOS, install with `go install`: the release binary isn't signed by Apple yet, so Gatekeeper blocks it (don't remove the quarantine flag to work around it). On Linux and Windows, `go install` or the [release binaries](https://github.com/atlana-ai-hq/atlana/releases/latest) both work. Homebrew will be recommended once the macOS binary is signed and notarized.
 
-Status: v0.1. Skills, rules and MCP servers install into Cursor, Claude Code, Codex, Gemini CLI, OpenCode and Antigravity (and skills export for Grok Bot); subagents and hooks install into Claude Code, Gemini CLI, OpenCode and Antigravity; slash commands into Claude Code, Gemini CLI, Cursor, OpenCode and Antigravity. MIT licensed.
+Status: v0.1. Skills, rules and MCP servers install into Cursor, Claude Code, Codex, Gemini CLI, OpenCode and Antigravity (and skills export for Grok Bot); subagents install into Claude Code, Gemini CLI, OpenCode, Antigravity, Cursor and Codex, and hooks into the first four; slash commands into Claude Code, Gemini CLI, Cursor, OpenCode and Antigravity. MIT licensed.

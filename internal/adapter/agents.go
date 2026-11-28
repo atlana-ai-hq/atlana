@@ -20,7 +20,7 @@ func (cursor) Detect(env Env) Detection {
 }
 func (cursor) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
-		m == manifest.ModuleCommands
+		m == manifest.ModuleCommands || m == manifest.ModuleAgents
 }
 func (cursor) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".cursor", "skills")
@@ -58,7 +58,8 @@ func (codex) Detect(env Env) Detection {
 	return detectBy(env, []string{"codex"}, []string{dir})
 }
 func (codex) Supports(m manifest.Module) bool {
-	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
+		m == manifest.ModuleAgents
 }
 func (codex) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".agents", "skills")

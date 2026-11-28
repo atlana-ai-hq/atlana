@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -150,6 +151,8 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 	}
 
 	ocCovered := opencodeSkillsCoveredBy(req, lock, modules)
+	cursorAgentsCovered := slices.Contains(modules, manifest.ModuleAgents) && len(p.Modules.Agents) > 0 &&
+		providedBy(req, lock, "claude", manifest.ModuleAgents)
 
 	for _, ad := range req.Agents {
 		if !p.Targets.Allows(ad.ID()) {
@@ -194,6 +197,15 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 					return nil, err
 				}
 			case manifest.ModuleAgents:
+				if ad.ID() == "cursor" && cursorAgentsCovered {
+					// O Cursor também lê .claude/agents; uma segunda cópia só duplica.
+					plan.Notes = append(plan.Notes, "cursor: os subagents vêm de claude, que o Cursor também lê; nada é gravado em .cursor/agents (e cópias antigas do atlana lá são removidas)")
+					root, _ := ad.(adapter.AgentsAdapter).AgentsRoot(req.Scope, req.Env)
+					if err := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleAgents, root).finish(); err != nil {
+						return nil, err
+					}
+					continue
+				}
 				if err := planAgents(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
@@ -588,7 +600,7 @@ func PlanUninstall(pack string, agents []string, scope adapter.Scope, env adapte
 			case cur != f.SHA256:
 				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s foi editado depois da instalação; mantido", e.Agent, f.Path))
 			case len(lock.Owners(f.Path)) > 1:
-				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s também pertence a outro pack; mantido", e.Agent, f.Path))
+				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s também é usado por %s; mantido", e.Agent, f.Path, otherOwners(lock.Owners(f.Path), e.Key())))
 			default:
 				plan.Actions = append(plan.Actions, Action{Op: OpRemove, Agent: e.Agent, Module: manifest.Module(e.Module), Path: f.Path, SHA256: cur})
 			}
@@ -635,7 +647,7 @@ func planKeyRemovals(plan *Plan, lock *lockfile.Lock, e lockfile.Entry, scope ad
 			case cur != k.SHA256:
 				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q em %s foi editado depois da instalação; mantido", e.Agent, k.Name, path))
 			case len(lock.KeyOwners(path, k.Name)) > 1:
-				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q também pertence a outro pack; mantido", e.Agent, k.Name))
+				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o servidor %q também é usado por %s; mantido", e.Agent, k.Name, otherOwners(lock.KeyOwners(path, k.Name), e.Key())))
 			default:
 				doc.Delete(k.Name)
 				acts = append(acts, Action{Op: OpRemove, Agent: e.Agent, Module: manifest.Module(e.Module), Path: path, Key: k.Name, SHA256: cur, Base: base})
@@ -964,4 +976,34 @@ func opencodeSkillsCoveredBy(req InstallRequest, lock *lockfile.Lock, modules []
 func mustSkillsRoot(ad adapter.Adapter, scope adapter.Scope, env adapter.Env) string {
 	root, _ := ad.SkillsRoot(scope, env)
 	return root
+}
+
+// providedBy diz se o agente id recebe o módulo deste pack no mesmo escopo,
+// neste plano ou numa instalação anterior registrada no lock.
+func providedBy(req InstallRequest, lock *lockfile.Lock, id string, m manifest.Module) bool {
+	if !req.Pack.Targets.Allows(id) {
+		return false
+	}
+	for _, ad := range req.Agents {
+		if ad.ID() == id && ad.Supports(m) {
+			return true
+		}
+	}
+	_, ok := lock.Find(req.Pack.Name, id, string(m))
+	return ok
+}
+
+// otherOwners descreve os outros donos de um arquivo ou chave ("pack x (agente y)").
+func otherOwners(owners []string, self string) string {
+	var out []string
+	for _, o := range owners {
+		if o == self {
+			continue
+		}
+		parts := strings.SplitN(o, "|", 3)
+		if len(parts) == 3 {
+			out = append(out, fmt.Sprintf("pack %s (%s)", parts[0], parts[1]))
+		}
+	}
+	return strings.Join(out, ", ")
 }
