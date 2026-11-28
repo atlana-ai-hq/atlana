@@ -61,7 +61,11 @@ Na primeira instalação, o servidor que já está na sua config com o mesmo nom
 
 Um hook de `settings.json` vira `hooks/<nome>/hook.yaml` + script. O script passa a receber o JSON normalizado (`tool`, `path`, `command`…), em vez do payload de cada agente. Assim o mesmo hook funciona no Claude Code e no Gemini CLI. Mantenha `exit 2` para negar.
 
-## 7. Instale e confira
+## 7. Commands
+
+De `.claude/commands/<nome>.md` (ou `.cursor/commands/`) para `commands/<nome>.md`. Mantenha `description`, troque `$1`… por `$ARGUMENTS` e tire `allowed-tools`/`model`, que não são portáveis. Um `.gemini/commands/<nome>.toml` vira `description` no frontmatter e o `prompt` no corpo, com `{{args}}` trocado por `$ARGUMENTS`. Custom prompts do Codex viram skills.
+
+## 8. Instale e confira
 
 ```bash
 atlana validate ~/meus-packs/meu-pack

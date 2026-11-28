@@ -817,3 +817,32 @@ func TestOpenCodeProjectRulesEntryIsRelative(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCommandsInstall(t *testing.T) {
+	f := setupAgentsHooks(t)
+	write(t, filepath.Join(f.pack.Dir, "commands", "commit.md"), "---\ndescription: Commit.\n---\nCommit de $ARGUMENTS.\n")
+	f.pack.Modules.Commands = []string{"commit"}
+	only := []manifest.Module{manifest.ModuleCommands}
+	p := f.planScope(t, adapter.ScopeProject, only, "claude", "gemini", "cursor", "opencode", "codex")
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{".claude/commands/commit.md", ".gemini/commands/commit.toml", ".cursor/commands/commit.md", ".opencode/commands/commit.md"} {
+		if _, err := os.Stat(filepath.Join(f.env.WorkDir, filepath.FromSlash(path))); err != nil {
+			t.Errorf("faltou %s", path)
+		}
+	}
+	if !strings.Contains(strings.Join(p.Notes, "\n"), "codex: os custom prompts do Codex foram descontinuados") {
+		t.Errorf("nota do codex: %v", p.Notes)
+	}
+	if again := f.planScope(t, adapter.ScopeProject, only, "claude", "gemini", "cursor", "opencode"); again.Changes() != 0 {
+		t.Fatalf("idempotente: %v", ops(again))
+	}
+	u, _ := PlanUninstall("demo", nil, adapter.ScopeProject, f.env)
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".claude", "commands", "commit.md")); !os.IsNotExist(err) {
+		t.Fatal("uninstall deveria remover o command")
+	}
+}

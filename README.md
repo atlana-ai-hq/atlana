@@ -84,15 +84,15 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 
 ## Suporte atual
 
-| Agente | Detecção | Skills | Rules | Subagents | Hooks | MCP |
-|---|---|---|---|---|---|---|
-| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | fallback | ✅ |
-| Claude Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ |
-| Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ |
-| Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
-| Crush | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
-| OpenCode | ✅ | ✅ | ✅ (`instructions`) | ✅ | ✅ (plugin) | ✅ |
+| Agente | Detecção | Skills | Rules | Subagents | Hooks | MCP | Commands |
+|---|---|---|---|---|---|---|---|
+| Cursor | ✅ | ✅ | ✅ (project) | ⏳ | fallback | ✅ | ✅ |
+| Claude Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ | ➖ (use skills) |
+| Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ | ✅ (TOML) |
+| Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Crush | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| OpenCode | ✅ | ✅ | ✅ (`instructions`) | ✅ | ✅ (plugin) | ✅ | ✅ |
 
 No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent Skills) para `~/.config/atlana/exports/grok/skills/` (ou `.atlana/exports/grok/skills/` com `--scope project`), e você envia cada pasta pelo Grok. Lock, `status` e `uninstall` funcionam igual. Sem MCP remoto nem sync automático no v1 ([ADR 0002](docs/adr/0002-grok-exporta-skills.md)).
 

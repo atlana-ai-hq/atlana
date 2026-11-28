@@ -15,6 +15,7 @@ modules:
   skills: [exemplo-de-skill]   # pastas em skills/<nome>/SKILL.md
   agents: [revisor]            # agents/<nome>.md
   hooks: [proteger-plano]      # hooks/<nome>/hook.yaml (só instala com --only hooks)
+  commands: [resumir]          # commands/<nome>.md (slash commands; $ARGUMENTS = texto depois do comando)
   mcp: []                      # chaves de mcp.json, ex.: [exemplo]
 
 requires:

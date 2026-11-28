@@ -35,6 +35,7 @@ modules:
   agents: [planner]
   hooks: [guard]
   mcp: [local, secret]
+  commands: [oi]
 requires:
   env: [TOKEN]
 `, 0o644)
@@ -45,6 +46,7 @@ requires:
 	write(t, filepath.Join(d, "hooks", "guard", "run.sh"), "#!/bin/sh\nexit 2\n", 0o755)
 	write(t, filepath.Join(d, "hooks", "guard", "rule.md"), "Não edite.\n", 0o644)
 	write(t, filepath.Join(d, "bin", "srv"), "#!/bin/sh\n", 0o755)
+	write(t, filepath.Join(d, "commands", "oi.md"), "---\ndescription: Diz oi.\n---\nOi, $ARGUMENTS.\n", 0o644)
 	write(t, filepath.Join(d, "mcp.json"), `{"mcpServers": {
   "local": {"command": "${PLUGIN_ROOT}/bin/srv", "args": ["--root", "${PLUGIN_ROOT}"]},
   "secret": {"command": "npx", "env": {"TOKEN": "${TOKEN}"}}
@@ -254,5 +256,20 @@ func TestReadme(t *testing.T) {
 	r, _ = Build(p, ClaudePlugin, nil)
 	if c := files(r)["README.md"]; c.Source == "" || len(c.Content) != 0 {
 		t.Fatal("README do pack tem prioridade sobre o gerado")
+	}
+}
+
+func TestBuildCommands(t *testing.T) {
+	r, _ := Build(pack(t), ClaudePlugin, nil)
+	if c := string(files(r)["commands/oi.md"].Content); !strings.Contains(c, "description: Diz oi.") || !strings.Contains(c, "$ARGUMENTS") {
+		t.Fatalf("claude:\n%s", c)
+	}
+	r, _ = Build(pack(t), GeminiExtension, nil)
+	if c := string(files(r)["commands/oi.toml"].Content); !strings.Contains(c, "{{args}}") {
+		t.Fatalf("gemini:\n%s", c)
+	}
+	r, _ = Build(pack(t), AgentPlugin, nil)
+	if _, ok := files(r)["commands/oi.md"]; ok || !strings.Contains(notes(r), "commands: a spec Agent Plugins") {
+		t.Fatalf("agent-plugin: %s", notes(r))
 	}
 }

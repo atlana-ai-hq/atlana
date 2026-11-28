@@ -84,9 +84,6 @@ func Build(p *manifest.Pack, t Target, modules []manifest.Module) (*Result, erro
 			}
 		}
 	}
-	if b.mods[manifest.ModuleCommands] {
-		b.note("commands ainda não são gerados em nenhum target (pulado)")
-	}
 	var err error
 	switch t {
 	case ClaudePlugin:
@@ -185,6 +182,29 @@ func (b *builder) subagents(id string) error {
 			continue
 		}
 		b.add("agents/"+file, content)
+	}
+	return nil
+}
+
+// commands gera commands/<nome>.<ext> com o tradutor do agente (claude, gemini).
+func (b *builder) commands(id string) error {
+	if !b.mods[manifest.ModuleCommands] {
+		return nil
+	}
+	ad, _ := adapter.Get(id)
+	ca := ad.(adapter.CommandsAdapter)
+	for _, name := range b.p.Modules.Commands {
+		c, err := b.p.Command(name)
+		if err != nil {
+			return err
+		}
+		file, content, notes, err := ca.Command(c)
+		b.res.Notes = append(b.res.Notes, notes...)
+		if err != nil {
+			b.note("command %s pulado: %v", name, err)
+			continue
+		}
+		b.add("commands/"+file, content)
 	}
 	return nil
 }
@@ -322,6 +342,9 @@ func (b *builder) claude() error {
 	if err := b.subagents("claude"); err != nil {
 		return err
 	}
+	if err := b.commands("claude"); err != nil {
+		return err
+	}
 	if b.mods[manifest.ModuleRules] {
 		b.note("rules: plugins do Claude Code não carregam CLAUDE.md; instale as rules com `atlana install` (pulado)")
 	}
@@ -371,6 +394,9 @@ func (b *builder) gemini() error {
 	if err := b.subagents("gemini"); err != nil {
 		return err
 	}
+	if err := b.commands("gemini"); err != nil {
+		return err
+	}
 	return b.hooks("gemini", "${extensionPath}")
 }
 
@@ -397,6 +423,9 @@ func (b *builder) cursor() error {
 	}
 	if b.mods[manifest.ModuleAgents] {
 		b.note("subagents ainda não são gerados para o Cursor (pulado)")
+	}
+	if b.mods[manifest.ModuleCommands] {
+		b.note("commands ainda não são gerados para o plugin do Cursor (pulado)")
 	}
 	servers, err := b.mcp("cursor", "${PLUGIN_ROOT}")
 	if err != nil {
@@ -425,7 +454,7 @@ func (b *builder) agentPlugin() error {
 	if err := b.skills(); err != nil {
 		return err
 	}
-	for _, mod := range []manifest.Module{manifest.ModuleRules, manifest.ModuleAgents, manifest.ModuleHooks} {
+	for _, mod := range []manifest.Module{manifest.ModuleRules, manifest.ModuleAgents, manifest.ModuleHooks, manifest.ModuleCommands} {
 		if b.mods[mod] {
 			b.note("%s: a spec Agent Plugins 1.0.0 só tem skills e MCP (pulado)", mod)
 		}
@@ -549,6 +578,7 @@ func (b *builder) readme() {
 		{"Subagents", manifest.ModuleAgents, b.p.Modules.Agents},
 		{"Hooks", manifest.ModuleHooks, b.p.Modules.Hooks},
 		{"Servidores MCP", manifest.ModuleMCP, b.p.Modules.MCP},
+		{"Commands", manifest.ModuleCommands, b.p.Modules.Commands},
 		{"Rules", manifest.ModuleRules, b.p.Modules.Rules},
 	}
 	for _, s := range sections {

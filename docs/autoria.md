@@ -35,6 +35,8 @@ A spec completa está em [`spec/README.md`](../spec/README.md).
 
 **Hooks** (`hooks/<nome>/hook.yaml` + script): o script recebe um JSON normalizado no stdin, e `exit 2` nega a ação. Defina `fallback` para agentes sem hooks (`rule` usa o `rule.md` ao lado). Hooks só entram com `--only hooks`. Lembre a quem for usar o pack que eles rodam comandos na máquina.
 
+**Commands** (`commands/<nome>.md`): slash commands. Frontmatter com `description` (e `argument-hint`, se quiser); o corpo é o prompt, com `$ARGUMENTS` no lugar do texto digitado depois do comando. Evite `$1`…`$9`, que só alguns agentes entendem.
+
 **MCP** (`mcp.json`, formato Agent Plugins): em `env` e `headers` use só `${NOME}` (ou `Bearer ${NOME}`) e liste o nome em `requires.env`. Valor literal é erro no `validate`. `${PLUGIN_ROOT}` é o diretório do pack.
 
 ## 4. Teste antes de publicar

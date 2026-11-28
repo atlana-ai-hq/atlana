@@ -76,6 +76,36 @@ func planAgents(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ad
 	return fp.finish()
 }
 
+// planCommands grava cada slash command no formato do agente.
+func planCommands(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapter, scope adapter.Scope, env adapter.Env) error {
+	ca, ok := ad.(adapter.CommandsAdapter)
+	if !ok {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: commands não são suportados pelo adaptador %s (pulado)", ad.ID(), ad.Name()))
+		return nil
+	}
+	root, err := ca.CommandsRoot(scope, env)
+	if err != nil {
+		return fmt.Errorf("%s: %w", ad.ID(), err)
+	}
+	fp := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleCommands, root)
+	for _, name := range p.Modules.Commands {
+		c, err := p.Command(name)
+		if err != nil {
+			return err
+		}
+		file, content, notes, err := ca.Command(c)
+		plan.Notes = append(plan.Notes, notes...)
+		if err != nil {
+			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: command %s pulado: %v", ad.ID(), name, err))
+			continue
+		}
+		if err := fp.add(Action{Path: filepath.Join(root, file), Content: content, SHA256: hashBytes(content)}); err != nil {
+			return err
+		}
+	}
+	return fp.finish()
+}
+
 // planHooks copia os hooks para HooksDir e liga um dispatcher por evento na
 // config do agente. Agentes sem hooks seguem o fallback de cada hook.
 func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapter, scope adapter.Scope, env adapter.Env) error {

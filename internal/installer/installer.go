@@ -162,7 +162,11 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				continue
 			}
 			if !ad.Supports(m) && m != manifest.ModuleHooks { // hooks têm fallback
-				plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s ainda não é suportado pelo adaptador %s (pulado)", ad.ID(), m, ad.Name()))
+				if ad.ID() == "codex" && m == manifest.ModuleCommands {
+					plan.Notes = append(plan.Notes, "codex: os custom prompts do Codex foram descontinuados em favor de skills; transforme o command numa skill (pulado)")
+				} else {
+					plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s ainda não é suportado pelo adaptador %s (pulado)", ad.ID(), m, ad.Name()))
+				}
 				continue
 			}
 			switch m {
@@ -184,6 +188,10 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 				}
 			case manifest.ModuleHooks:
 				if err := planHooks(plan, lock, p, ad, req.Scope, req.Env); err != nil {
+					return nil, err
+				}
+			case manifest.ModuleCommands:
+				if err := planCommands(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
 			default:

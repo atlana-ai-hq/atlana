@@ -285,3 +285,36 @@ func TestLegacyAPIVersionWarns(t *testing.T) {
 		t.Fatal("v2 não existe")
 	}
 }
+
+func TestCommandValidation(t *testing.T) {
+	d := t.TempDir()
+	os.WriteFile(filepath.Join(d, "atlana.yaml"), []byte("apiVersion: atlana/v1\nkind: Pack\nname: cmds\nversion: 0.1.0\ndescription: Commands.\nmodules:\n  commands: [ok, pos, ruim, vazio]\n"), 0o644)
+	os.MkdirAll(filepath.Join(d, "commands"), 0o755)
+	os.WriteFile(filepath.Join(d, "commands", "ok.md"), []byte("---\ndescription: Ok.\nargument-hint: \"[x]\"\n---\n\nFaça $ARGUMENTS.\n"), 0o644)
+	os.WriteFile(filepath.Join(d, "commands", "pos.md"), []byte("---\ndescription: Posicional.\n---\nUse $1 e $2.\n"), 0o644)
+	os.WriteFile(filepath.Join(d, "commands", "ruim.md"), []byte("sem frontmatter\n"), 0o644)
+	os.WriteFile(filepath.Join(d, "commands", "vazio.md"), []byte("---\ndescription: \"\"\nextra: 1\n---\n"), 0o644)
+	_, rep, err := Load(d)
+	if err == nil {
+		t.Fatal("esperava erros")
+	}
+	var errs, warns []string
+	for _, is := range rep.Issues {
+		if is.Warning {
+			warns = append(warns, is.String())
+		} else {
+			errs = append(errs, is.String())
+		}
+	}
+	got := strings.Join(errs, "\n")
+	if len(errs) != 2 || !strings.Contains(got, "ruim.md") || !strings.Contains(got, "vazio.md") {
+		t.Errorf("erros: %v", errs)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "pos.md") {
+		t.Errorf("avisos: %v", warns)
+	}
+	c, err := ParseCommand(filepath.Join(d, "commands", "ok.md"), "ok")
+	if err != nil || c.Description != "Ok." || c.ArgumentHint != "[x]" || c.Body != "Faça $ARGUMENTS.\n" {
+		t.Fatalf("%+v %v", c, err)
+	}
+}

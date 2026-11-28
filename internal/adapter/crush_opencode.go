@@ -73,7 +73,7 @@ func (opencode) Detect(env Env) Detection {
 }
 func (opencode) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleMCP || m == manifest.ModuleAgents ||
-		m == manifest.ModuleRules || m == manifest.ModuleHooks
+		m == manifest.ModuleRules || m == manifest.ModuleHooks || m == manifest.ModuleCommands
 }
 func (opencode) SkillsRoot(scope Scope, env Env) (string, error) {
 	return opencodeDir(scope, env, ".opencode", "skills")

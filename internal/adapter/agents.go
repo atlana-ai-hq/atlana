@@ -19,7 +19,8 @@ func (cursor) Detect(env Env) Detection {
 	return detectBy(env, []string{"cursor", "cursor-agent"}, []string{filepath.Join(env.Home, ".cursor")})
 }
 func (cursor) Supports(m manifest.Module) bool {
-	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP
+	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
+		m == manifest.ModuleCommands
 }
 func (cursor) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".cursor", "skills")
@@ -35,7 +36,7 @@ func (claude) Detect(env Env) Detection {
 }
 func (claude) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
-		m == manifest.ModuleAgents || m == manifest.ModuleHooks
+		m == manifest.ModuleAgents || m == manifest.ModuleHooks || m == manifest.ModuleCommands
 }
 func (claude) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".claude", "skills")
@@ -73,7 +74,7 @@ func (gemini) Detect(env Env) Detection {
 }
 func (gemini) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
-		m == manifest.ModuleAgents || m == manifest.ModuleHooks
+		m == manifest.ModuleAgents || m == manifest.ModuleHooks || m == manifest.ModuleCommands
 }
 func (gemini) SkillsRoot(scope Scope, env Env) (string, error) {
 	return scopedDir(scope, env, ".gemini", "skills")

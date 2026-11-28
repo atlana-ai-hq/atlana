@@ -11,7 +11,7 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode) |
 | Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI, OpenCode); fallback nos outros |
-| Commands | formato Atlana (`commands/<nome>.md`) | validado (existência), instalação futura |
+| Commands | formato Atlana (`commands/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, Cursor, OpenCode) |
 
 ## 1. Pack
 
@@ -214,3 +214,17 @@ projects:
 - **`agent-plugin`:** segue os campos fechados da spec e os `$schema` exatos. Como a spec não expande variáveis de ambiente e proíbe segredos, servidores que dependem de `${VAR}` ficam de fora, com aviso.
 - **Arquivos de apoio:** arquivos e pastas do pack fora dos módulos (ex.: `bin/`, `LICENSE`, `README.md`) são copiados para a raiz do artefato. Sem `README.md` no pack, o build gera um.
 - **Sobrescrita:** o diretório de saída só é substituído se tiver o marcador `.atlana-build.json`; qualquer outro conteúdo é recusado.
+
+## Commands
+
+`commands/<nome>.md` é um slash command: frontmatter com `description` (obrigatório) e `argument-hint` (opcional), e o corpo é o prompt. `$ARGUMENTS` é o texto digitado depois do comando. O nome vem do arquivo.
+
+| Agente | Destino (user / project) | Tradução |
+|---|---|---|
+| Claude Code | `~/.claude/commands/` / `.claude/commands/` | igual |
+| Gemini CLI | `~/.gemini/commands/<nome>.toml` / `.gemini/commands/` | `description` + `prompt`; `$ARGUMENTS` vira `{{args}}` |
+| Cursor | `~/.cursor/commands/` / `.cursor/commands/` | Markdown puro; o Cursor anexa o texto digitado (aviso se o corpo usa `$ARGUMENTS`) |
+| OpenCode | `$XDG_CONFIG_HOME/opencode/commands/` / `.opencode/commands/` | `description` + corpo; sem `argument-hint` |
+| Codex, Crush, Grok | não instalado | os custom prompts do Codex foram descontinuados: use uma skill |
+
+`$1`…`$9` só funcionam no Claude Code e no OpenCode; o `validate` avisa. No `atlana build`, commands entram no plugin do Claude e na extensão do Gemini.

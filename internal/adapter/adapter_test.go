@@ -179,8 +179,7 @@ func TestCrushAndOpenCode(t *testing.T) {
 		if cr.Supports(m) != (m == manifest.ModuleSkills) {
 			t.Errorf("crush: Supports(%s)", m)
 		}
-		want := m != manifest.ModuleCommands
-		if oc.Supports(m) != want {
+		if !oc.Supports(m) {
 			t.Errorf("opencode: Supports(%s)", m)
 		}
 	}
@@ -271,5 +270,51 @@ func TestOpenCodeToolCategoryAndPlugin(t *testing.T) {
 	}
 	if !strings.Contains(got, "session.created") || strings.Contains(got, "session.idle") || strings.Contains(got, "tool.execute.after") {
 		t.Fatalf("só os eventos usados:\n%s", got)
+	}
+}
+
+func TestCommands(t *testing.T) {
+	c := manifest.Command{Name: "commit", Description: "Escreve a mensagem de commit.", ArgumentHint: "[escopo]", Body: "Escreva um commit para $ARGUMENTS.\nUse \"aspas\" e <tags> & \\barras.\n"}
+	env := fakeEnv(t)
+	cases := []struct {
+		id, root, file string
+		want           []string
+	}{
+		{"claude", filepath.Join(env.WorkDir, ".claude", "commands"), "commit.md", []string{"description: Escreve a mensagem de commit.", "argument-hint: '[escopo]'", "para $ARGUMENTS."}},
+		{"opencode", filepath.Join(env.WorkDir, ".opencode", "commands"), "commit.md", []string{"description: Escreve a mensagem de commit.", "para $ARGUMENTS."}},
+		{"cursor", filepath.Join(env.WorkDir, ".cursor", "commands"), "commit.md", []string{"Escreva um commit"}},
+		{"gemini", filepath.Join(env.WorkDir, ".gemini", "commands"), "commit.toml", []string{`description = "Escreve a mensagem de commit."`, `para {{args}}.\nUse \"aspas\" e <tags> & \\barras.\n"`}},
+	}
+	for _, tc := range cases {
+		ad, _ := Get(tc.id)
+		ca := ad.(CommandsAdapter)
+		if root, _ := ca.CommandsRoot(ScopeProject, env); root != tc.root {
+			t.Errorf("%s: root %s", tc.id, root)
+		}
+		file, b, notes, err := ca.Command(c)
+		if err != nil || file != tc.file {
+			t.Fatalf("%s: %s %v", tc.id, file, err)
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(string(b), w) {
+				t.Errorf("%s: sem %q:\n%s", tc.id, w, b)
+			}
+		}
+		if tc.id == "cursor" && (len(notes) != 1 || strings.HasPrefix(string(b), "---")) {
+			t.Errorf("cursor: Markdown puro com nota sobre $ARGUMENTS: %v\n%s", notes, b)
+		}
+		if tc.id == "opencode" && strings.Contains(string(b), "argument-hint") {
+			t.Error("opencode não tem argument-hint")
+		}
+	}
+	ad, _ := Get("opencode")
+	if root, _ := ad.(CommandsAdapter).CommandsRoot(ScopeUser, env); root != filepath.Join(env.Home, ".config", "opencode", "commands") {
+		t.Errorf("opencode user: %s", root)
+	}
+	for _, id := range []string{"codex", "crush", "grok"} {
+		ad, _ := Get(id)
+		if ad.Supports(manifest.ModuleCommands) {
+			t.Errorf("%s não instala commands", id)
+		}
 	}
 }

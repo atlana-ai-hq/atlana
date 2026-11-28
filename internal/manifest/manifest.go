@@ -326,9 +326,7 @@ func checkContent(p *Pack, rep *Report) {
 		checkHook(p, h, rep)
 	}
 	for _, c := range p.Modules.Commands {
-		if !isFile(filepath.Join(p.Dir, "commands", c+".md")) {
-			rep.errorf(mf, "commands: %q declarado, mas commands/%s.md não existe", c, c)
-		}
+		checkCommand(p, c, rep)
 	}
 	if len(p.Modules.MCP) > 0 {
 		checkMCP(p, rep)
