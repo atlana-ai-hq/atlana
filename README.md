@@ -18,11 +18,18 @@ O Atlana resolve isso com três peças:
 
 ## Instalação
 
-Requer Go 1.24+.
+| Sistema | Como instalar |
+|---|---|
+| macOS | `go install` (abaixo). O binário do release ainda não é assinado pela Apple, e o Gatekeeper bloqueia a execução. Não remova a quarentena para contornar. |
+| Linux e Windows | `go install` ou o binário do [release](https://github.com/atlana-ai-hq/atlana/releases/latest) (confira com `checksums.txt`) |
+
+Com Go 1.24+:
 
 ```bash
 go install github.com/atlana-ai-hq/atlana/cmd/atlana@latest
 ```
+
+O `brew install --cask atlana-ai-hq/tap/atlana` volta a ser recomendado quando o binário de macOS for assinado e notarizado ([docs/release.md](docs/release.md#secrets)).
 
 ## Uso
 
@@ -125,7 +132,8 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] `atlana build --target claude-plugin|cursor-plugin|gemini-extension|agent-plugin`
 - [x] Origens `github:owner/repo//caminho@ref` e registry local (`atlana registry`)
 - [x] `atlana scan`, configuração de release (GoReleaser + Homebrew), template e guias de autoria/migração
-- [ ] Primeiro release publicado (tap, assinatura no macOS, workflow)
+- [x] Primeiro release publicado (workflow, binários, tap)
+- [ ] Assinatura e notarização no macOS (Apple Developer Program)
 
 ## Desenvolvimento
 
@@ -157,4 +165,6 @@ atlana doctor
 atlana install packs/hello --only skills --agent cursor,claude --dry-run
 ```
 
-Status: v0.1. Skills install into Cursor, Claude Code, Codex and Gemini CLI today (and export for Grok Bot), plus rules and MCP servers; subagents and hooks install into Claude Code and Gemini CLI. MIT licensed.
+On macOS, install with `go install`: the release binary isn't signed by Apple yet, so Gatekeeper blocks it (don't remove the quarantine flag to work around it). On Linux and Windows, `go install` or the [release binaries](https://github.com/atlana-ai-hq/atlana/releases/latest) both work. Homebrew will be recommended once the macOS binary is signed and notarized.
+
+Status: v0.1. Skills, rules and MCP servers install into Cursor, Claude Code, Codex, Gemini CLI, OpenCode and Antigravity (and skills export for Grok Bot); subagents and hooks install into Claude Code, Gemini CLI, OpenCode and Antigravity; slash commands into Claude Code, Gemini CLI, Cursor, OpenCode and Antigravity. MIT licensed.
