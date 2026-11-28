@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
@@ -174,11 +175,80 @@ func TestCrushAndOpenCode(t *testing.T) {
 	if got, _ := oc.SkillsRoot(ScopeUser, env); got != filepath.Join(xdg, "opencode", "skills") {
 		t.Errorf("opencode XDG: %s", got)
 	}
-	for _, ad := range []Adapter{cr, oc} {
-		for _, m := range manifest.AllModules {
-			if ad.Supports(m) != (m == manifest.ModuleSkills) {
-				t.Errorf("%s: Supports(%s)", ad.ID(), m)
-			}
+	for _, m := range manifest.AllModules {
+		if cr.Supports(m) != (m == manifest.ModuleSkills) {
+			t.Errorf("crush: Supports(%s)", m)
 		}
+		want := m == manifest.ModuleSkills || m == manifest.ModuleMCP || m == manifest.ModuleAgents
+		if oc.Supports(m) != want {
+			t.Errorf("opencode: Supports(%s)", m)
+		}
+	}
+}
+
+func TestOpenCodeMCP(t *testing.T) {
+	env := fakeEnv(t)
+	ad, _ := Get("opencode")
+	ma := ad.(MCPAdapter)
+	cf, _ := ma.MCPConfig(ScopeUser, env)
+	if cf.Path != filepath.Join(env.Home, ".config", "opencode", "opencode.json") || cf.Section != "mcp" {
+		t.Fatalf("config: %+v", cf)
+	}
+	dir := filepath.Join(env.Home, ".config", "opencode")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "opencode.jsonc"), []byte("{}"), 0o644)
+	if cf, _ := ma.MCPConfig(ScopeUser, env); cf.Path != filepath.Join(dir, "opencode.jsonc") {
+		t.Fatalf("jsonc existente tem prioridade: %s", cf.Path)
+	}
+	if cf, _ := ma.MCPConfig(ScopeProject, env); cf.Path != filepath.Join(env.WorkDir, "opencode.json") {
+		t.Fatalf("project: %s", cf.Path)
+	}
+
+	local, err := ma.MCPServer(map[string]any{"command": "${PLUGIN_ROOT}/bin/srv", "args": []any{"--x"}, "env": map[string]any{"TOKEN": "${TOKEN}"}}, "/pack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := local["command"].([]any)
+	if local["type"] != "local" || cmd[0] != "/pack/bin/srv" || cmd[1] != "--x" || local["environment"].(map[string]any)["TOKEN"] != "{env:TOKEN}" {
+		t.Fatalf("local: %v", local)
+	}
+	if _, ok := local["env"]; ok {
+		t.Fatal("env vira environment")
+	}
+	remote, _ := ma.MCPServer(map[string]any{"type": "http", "url": "https://x/mcp", "headers": map[string]any{"Authorization": "Bearer ${T}"}}, "/pack")
+	if remote["type"] != "remote" || remote["headers"].(map[string]any)["Authorization"] != "Bearer {env:T}" {
+		t.Fatalf("remote: %v", remote)
+	}
+	if _, err := ma.MCPServer(map[string]any{"command": "x", "cwd": "./a"}, "/pack"); err == nil {
+		t.Fatal("cwd não tem equivalente")
+	}
+}
+
+func TestOpenCodeSubagent(t *testing.T) {
+	env := fakeEnv(t)
+	ad, _ := Get("opencode")
+	aa := ad.(AgentsAdapter)
+	if root, _ := aa.AgentsRoot(ScopeUser, env); root != filepath.Join(env.Home, ".config", "opencode", "agents") {
+		t.Fatalf("user: %s", root)
+	}
+	if root, _ := aa.AgentsRoot(ScopeProject, env); root != filepath.Join(env.WorkDir, ".opencode", "agents") {
+		t.Fatalf("project: %s", root)
+	}
+	file, b, notes, err := aa.Subagent(manifest.Subagent{Name: "rev", Description: "Revisa.", Tools: []string{"read", "search", "shell:readonly"}, Model: "fast", Body: "Revise.\n"})
+	if err != nil || file != "rev.md" {
+		t.Fatal(file, err)
+	}
+	got := string(b)
+	for _, want := range []string{"description: Revisa.", "mode: subagent", "bash: ask", "edit: deny", "webfetch: deny", "Revise."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("sem %q:\n%s", want, got)
+		}
+	}
+	if len(notes) != 3 { // shell:readonly, mcp e model
+		t.Errorf("notas: %v", notes)
+	}
+	_, b, _, _ = aa.Subagent(manifest.Subagent{Name: "livre", Description: "Tudo.", Model: "inherit", Body: "x"})
+	if strings.Contains(string(b), "permission") {
+		t.Errorf("sem tools = sem restrição:\n%s", b)
 	}
 }

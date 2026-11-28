@@ -9,7 +9,7 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
 | Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex) |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
-| Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI) |
+| Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode) |
 | Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI); fallback nos outros |
 | Commands | formato Atlana (`commands/<nome>.md`) | validado (existência), instalação futura |
 
@@ -156,6 +156,7 @@ Cada servidor de `modules.mcp` entra por merge (ADR 0004). `${PLUGIN_ROOT}` vira
 | Claude Code (`claude`) | `~/.claude.json` → `mcpServers` | `.mcp.json` → `mcpServers` | igual; `url` sem `type` ganha `type: http` |
 | Cursor (`cursor`) | `~/.cursor/mcp.json` → `mcpServers` | `.cursor/mcp.json` → `mcpServers` | `${VAR}` vira `${env:VAR}` |
 | Gemini CLI (`gemini`) | `~/.gemini/settings.json` → `mcpServers` | `.gemini/settings.json` → `mcpServers` | `url` vira `httpUrl` (exceto `type: sse`) |
+| OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/opencode.json` (ou `.jsonc`, se existir) → `mcp` | `opencode.json` na raiz → `mcp` | stdio vira `type: local` com `command` em array e `environment`; HTTP/SSE vira `type: remote`; `${VAR}` vira `{env:VAR}`; `cwd` é recusado |
 | Codex CLI (`codex`) | `$CODEX_HOME/config.toml` (padrão `~/.codex`) → `[mcp_servers.<nome>]` | `.codex/config.toml` | `env` vira `env_vars` (a variável precisa ter o mesmo nome); `Authorization: Bearer ${X}` vira `bearer_token_env_var`; outros headers, `env_http_headers` |
 
 No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_servers]`, inline ou chave com ponto), a instalação para com conflito.
@@ -166,6 +167,7 @@ No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_
 |---|---|---|
 | Claude Code (`claude`) | `.claude/agents/<nome>.md` (tools `Read, Grep…`; model `inherit/haiku/opus`) | `.claude/settings.json` → `hooks` (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `Stop`) |
 | Gemini CLI (`gemini`) | `.gemini/agents/<nome>.md` (`kind: local`; tools `read_file…`; `fast`/`smart` usam o modelo da sessão, com aviso) | `.gemini/settings.json` → `hooks` (`BeforeTool`, `AfterTool`, `BeforeAgent`, `SessionStart`, `AfterAgent`) |
+| OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/agents/<nome>.md` ou `.opencode/agents/<nome>.md` (`mode: subagent`; `permission` com `edit`, `bash`, `webfetch`; `shell:readonly` vira `bash: ask`; leitura e busca sempre liberadas; `fast`/`smart` usam o modelo da sessão) | sem hooks de shell (só plugins JS) |
 | Cursor, Codex | pulado, com aviso | `fallback` de cada hook |
 | Grok Bot | pulado, com aviso | `skip` (não tem rules) |
 
