@@ -70,7 +70,7 @@ func Load(path string) (*Registry, error) {
 
 // Validate confere apiVersion, kind e cada projeto.
 func (r *Registry) Validate() error {
-	if r.APIVersion != spec.APIVersion {
+	if !spec.Supported(r.APIVersion) {
 		return fmt.Errorf("apiVersion %q não suportada (esperado %s)", r.APIVersion, spec.APIVersion)
 	}
 	if r.Kind != Kind {

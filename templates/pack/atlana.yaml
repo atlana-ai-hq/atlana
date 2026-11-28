@@ -1,7 +1,7 @@
 # Esqueleto de pack Atlana. Copie esta pasta, troque os nomes e rode:
 #   atlana validate .
 # Guia completo: docs/autoria.md
-apiVersion: atlana/v1alpha1
+apiVersion: atlana/v1
 kind: Pack
 name: meu-pack                 # minúsculas e hífens
 version: 0.1.0                 # SemVer

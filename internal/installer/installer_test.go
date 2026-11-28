@@ -33,7 +33,7 @@ type fixture struct {
 func setup(t *testing.T, skills ...string) fixture {
 	t.Helper()
 	dir := t.TempDir()
-	m := "apiVersion: atlana/v1alpha1\nkind: Pack\nname: demo\nversion: 0.1.0\ndescription: d\nmodules:\n  skills: ["
+	m := "apiVersion: atlana/v1\nkind: Pack\nname: demo\nversion: 0.1.0\ndescription: d\nmodules:\n  skills: ["
 	for i, s := range skills {
 		if i > 0 {
 			m += ", "

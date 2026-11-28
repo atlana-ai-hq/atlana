@@ -68,7 +68,7 @@ packs/hello/
 ```
 
 ```yaml
-apiVersion: atlana/v1alpha1
+apiVersion: atlana/v1
 kind: Pack
 name: hello
 version: 0.1.0

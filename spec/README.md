@@ -1,6 +1,6 @@
-# Especificação Atlana v0.1 (rascunho)
+# Especificação Atlana v1
 
-> `apiVersion: atlana/v1alpha1` · status: **rascunho**, pode mudar sem aviso até a v1.
+> `apiVersion: atlana/v1` · status: **estável**. Mudanças incompatíveis só numa `atlana/v2`. `atlana/v1alpha1` (mesmo formato) ainda é aceita, com aviso ([ADR 0008](../docs/adr/0008-apiversion-v1.md)).
 
 O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra principal é: **não inventar formato onde já existe padrão**.
 
@@ -33,7 +33,7 @@ packs/<nome>/
 Schema: [`schemas/atlana.schema.json`](schemas/atlana.schema.json) (JSON Schema 2020-12). A CLI embute **este mesmo arquivo**, então o schema publicado e o validado nunca divergem.
 
 ```yaml
-apiVersion: atlana/v1alpha1    # obrigatório
+apiVersion: atlana/v1    # obrigatório
 kind: Pack                     # obrigatório
 name: hello                    # obrigatório; regras de nome de Agent Skills
 version: 0.1.0                 # obrigatório; SemVer 2.0
@@ -184,7 +184,7 @@ A busca usa o `git` da pessoa, com o prompt de senha desligado. Primeiro HTTPS (
 O registry fica em `$XDG_CONFIG_HOME/atlana/hub.yaml`:
 
 ```yaml
-apiVersion: atlana/v1alpha1
+apiVersion: atlana/v1
 kind: HubRegistry
 projects:
   - name: atlana                 # nome de pack (minúsculas e hífens), único

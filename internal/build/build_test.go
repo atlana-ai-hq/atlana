@@ -22,7 +22,7 @@ func write(t *testing.T, path, content string, mode os.FileMode) {
 func pack(t *testing.T) *manifest.Pack {
 	t.Helper()
 	d := t.TempDir()
-	write(t, filepath.Join(d, "atlana.yaml"), `apiVersion: atlana/v1alpha1
+	write(t, filepath.Join(d, "atlana.yaml"), `apiVersion: atlana/v1
 kind: Pack
 name: demo
 version: 1.2.0

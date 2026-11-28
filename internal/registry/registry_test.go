@@ -58,7 +58,7 @@ func TestValidation(t *testing.T) {
 		t.Fatal("Add inválido não pode mudar o registry")
 	}
 	path := filepath.Join(t.TempDir(), FileName)
-	os.WriteFile(path, []byte("apiVersion: atlana/v1alpha1\nkind: HubRegistry\nprojects:\n  - name: a\n    origin: github:a/b\n    visibility: public\n    token: abc\n"), 0o644)
+	os.WriteFile(path, []byte("apiVersion: atlana/v1\nkind: HubRegistry\nprojects:\n  - name: a\n    origin: github:a/b\n    visibility: public\n    token: abc\n"), 0o644)
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "token") {
 		t.Fatalf("campo desconhecido (ex.: token) deveria falhar: %v", err)
 	}

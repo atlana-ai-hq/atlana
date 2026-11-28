@@ -37,7 +37,7 @@ func TestScan(t *testing.T) {
 	write(t, filepath.Join(root, "docs", "a.md"), "(Initech)\n")
 	write(t, filepath.Join(root, ".git", "config"), "AcmeCorp")
 	write(t, filepath.Join(root, "img.bin"), "AcmeCorp\x00\x01")
-	write(t, filepath.Join(root, "packs", "work", "atlana.yaml"), "apiVersion: atlana/v1alpha1\nkind: Pack\nname: work\nversion: 0.1.0\ndescription: d\nvisibility: private\n")
+	write(t, filepath.Join(root, "packs", "work", "atlana.yaml"), "apiVersion: atlana/v1\nkind: Pack\nname: work\nversion: 0.1.0\ndescription: d\nvisibility: private\n")
 
 	got, err := Scan(root, []string{"AcmeCorp", "Initech"})
 	if err != nil {

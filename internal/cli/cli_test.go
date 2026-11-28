@@ -39,7 +39,7 @@ func newApp(t *testing.T, bins ...string) (*App, *bytes.Buffer, *bytes.Buffer) {
 
 func TestVersion(t *testing.T) {
 	app, out, _ := newApp(t)
-	if code := app.Run([]string{"version"}); code != 0 || !strings.Contains(out.String(), "atlana/v1alpha1") {
+	if code := app.Run([]string{"version"}); code != 0 || !strings.Contains(out.String(), "atlana/v1") {
 		t.Fatalf("code=%d out=%q", code, out)
 	}
 }
@@ -73,7 +73,7 @@ func TestValidateRepoPacks(t *testing.T) {
 func TestValidateInvalid(t *testing.T) {
 	app, out, _ := newApp(t)
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "atlana.yaml"), []byte("apiVersion: atlana/v1alpha1\nkind: Pack\nname: X\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "atlana.yaml"), []byte("apiVersion: atlana/v1\nkind: Pack\nname: X\n"), 0o644)
 	if code := app.Run([]string{"validate", dir}); code != 1 || !strings.Contains(out.String(), "FALHA") {
 		t.Fatalf("code=%d out=%s", code, out)
 	}

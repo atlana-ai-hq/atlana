@@ -17,7 +17,7 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-const validManifest = `apiVersion: atlana/v1alpha1
+const validManifest = `apiVersion: atlana/v1
 kind: Pack
 name: demo
 version: 1.2.3
@@ -67,7 +67,7 @@ func TestLoadValid(t *testing.T) {
 
 func TestLoadSchemaErrors(t *testing.T) {
 	cases := map[string]string{
-		"apiVersion errada":   strings.Replace(validManifest, "atlana/v1alpha1", "atlana/v9", 1),
+		"apiVersion errada":   strings.Replace(validManifest, "atlana/v1", "atlana/v9", 1),
 		"nome inválido":       strings.Replace(validManifest, "name: demo", "name: Demo_Pack", 1),
 		"versão não semver":   strings.Replace(validManifest, "1.2.3", "v1", 1),
 		"campo desconhecido":  validManifest + "foo: bar\n",
@@ -267,5 +267,21 @@ func TestTemplateIsValidAndUsesEveryModule(t *testing.T) {
 	}
 	if _, err := p.MCPServers(); err != nil {
 		t.Errorf("mcp.json do template: %v", err)
+	}
+}
+
+func TestLegacyAPIVersionWarns(t *testing.T) {
+	d := t.TempDir()
+	os.WriteFile(filepath.Join(d, "atlana.yaml"), []byte("apiVersion: atlana/v1alpha1\nkind: Pack\nname: velho\nversion: 0.1.0\ndescription: Antigo.\n"), 0o644)
+	_, rep, err := Load(d)
+	if err != nil {
+		t.Fatalf("v1alpha1 ainda é aceita: %v %v", err, rep.Issues)
+	}
+	if len(rep.Issues) != 1 || !rep.Issues[0].Warning || !strings.Contains(rep.Issues[0].Message, "obsoleta") {
+		t.Fatalf("esperava um aviso: %v", rep.Issues)
+	}
+	os.WriteFile(filepath.Join(d, "atlana.yaml"), []byte("apiVersion: atlana/v2\nkind: Pack\nname: velho\nversion: 0.1.0\ndescription: Antigo.\n"), 0o644)
+	if _, _, err := Load(d); err == nil {
+		t.Fatal("v2 não existe")
 	}
 }

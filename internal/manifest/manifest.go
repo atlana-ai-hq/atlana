@@ -251,6 +251,9 @@ func Load(dir string) (*Pack, *Report, error) {
 		return nil, rep, ErrInvalid
 	}
 	p.Dir = abs
+	if p.APIVersion == spec.LegacyAPIVersion {
+		rep.warnf(mf, "apiVersion %s está obsoleta; troque por %s (o formato é o mesmo)", spec.LegacyAPIVersion, spec.APIVersion)
+	}
 	if p.Visibility == "" {
 		p.Visibility = "public"
 	}

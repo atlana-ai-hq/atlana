@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/atlana-ai-hq/atlana/spec/schemas/atlana.schema.json",
   "title": "Atlana pack manifest (atlana.yaml)",
-  "description": "Manifesto de um pack Atlana, spec v0.1 (apiVersion atlana/v1alpha1).",
+  "description": "Manifesto de um pack Atlana, spec v1 (apiVersion atlana/v1; atlana/v1alpha1 ainda é aceita).",
   "type": "object",
   "required": ["apiVersion", "kind", "name", "version", "description"],
   "additionalProperties": false,
@@ -10,7 +10,7 @@
     "^x-": {}
   },
   "properties": {
-    "apiVersion": { "const": "atlana/v1alpha1" },
+    "apiVersion": { "enum": ["atlana/v1", "atlana/v1alpha1"] },
     "kind": { "const": "Pack" },
     "name": { "$ref": "#/$defs/name" },
     "version": {
