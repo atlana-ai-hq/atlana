@@ -221,3 +221,17 @@ func TestBuildCommand(t *testing.T) {
 		t.Fatalf("sem --target: %d", code)
 	}
 }
+
+func TestResolveVersion(t *testing.T) {
+	for _, c := range []struct{ stamped, module, want string }{
+		{"0.1.1", "v0.1.1", "0.1.1"},        // release: -ldflags manda
+		{devVersion, "v0.1.1", "0.1.1"},     // go install ...@v0.1.1
+		{devVersion, "(devel)", devVersion}, // go build local
+		{devVersion, "", devVersion},
+		{devVersion, "v0.1.2-0.20261127-abcdef123456", "0.1.2-0.20261127-abcdef123456"}, // pseudo-versão
+	} {
+		if got := resolveVersion(c.stamped, c.module); got != c.want {
+			t.Errorf("resolveVersion(%q, %q) = %q, esperado %q", c.stamped, c.module, got, c.want)
+		}
+	}
+}

@@ -29,7 +29,27 @@ import (
 )
 
 // Version é sobrescrita no build de release via -ldflags "-X .../internal/cli.Version=x.y.z".
-var Version = "0.1.0-dev"
+var Version = devVersion
+
+const devVersion = "0.1.0-dev"
+
+// currentVersion usa a versão do módulo quando o binário veio de
+// `go install ...@vX.Y.Z`, que não passa -ldflags.
+func currentVersion() string {
+	bi, _ := debug.ReadBuildInfo()
+	main := ""
+	if bi != nil {
+		main = bi.Main.Version
+	}
+	return resolveVersion(Version, main)
+}
+
+func resolveVersion(stamped, module string) string {
+	if stamped != devVersion || module == "" || module == "(devel)" {
+		return stamped
+	}
+	return strings.TrimPrefix(module, "v")
+}
 
 // App carrega as dependências do processo; nos testes, tudo é falso.
 type App struct {
@@ -131,7 +151,7 @@ func (a *App) version() error {
 			}
 		}
 	}
-	fmt.Fprintf(a.Stdout, "atlana %s%s · spec %s\n", Version, commit, spec.APIVersion)
+	fmt.Fprintf(a.Stdout, "atlana %s%s · spec %s\n", currentVersion(), commit, spec.APIVersion)
 	return nil
 }
 
@@ -767,7 +787,7 @@ func (a *App) build(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", t, err)
 		}
-		dst, err := build.Write(res, outDir, Version)
+		dst, err := build.Write(res, outDir, currentVersion())
 		if err != nil {
 			return fmt.Errorf("%s: %w", t, err)
 		}
