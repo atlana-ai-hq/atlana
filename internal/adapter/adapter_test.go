@@ -33,7 +33,7 @@ func TestDetect(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(env.Home, ".gemini"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"claude": true, "gemini": true, "cursor": false, "codex": false, "grok": false}
+	want := map[string]bool{"claude": true, "gemini": true, "cursor": false, "codex": false, "grok": false, "crush": false, "opencode": false}
 	for _, ad := range All() {
 		if got := ad.Detect(env).Installed; got != want[ad.ID()] {
 			t.Errorf("%s: Installed = %v, esperado %v", ad.ID(), got, want[ad.ID()])
@@ -73,6 +73,10 @@ func TestSkillsRoot(t *testing.T) {
 		{"gemini", ScopeProject, filepath.Join(env.WorkDir, ".gemini", "skills")},
 		{"grok", ScopeUser, filepath.Join(env.Home, ".config", "atlana", "exports", "grok", "skills")},
 		{"grok", ScopeProject, filepath.Join(env.WorkDir, ".atlana", "exports", "grok", "skills")},
+		{"crush", ScopeUser, filepath.Join(env.Home, ".config", "crush", "skills")},
+		{"crush", ScopeProject, filepath.Join(env.WorkDir, ".crush", "skills")},
+		{"opencode", ScopeUser, filepath.Join(env.Home, ".config", "opencode", "skills")},
+		{"opencode", ScopeProject, filepath.Join(env.WorkDir, ".opencode", "skills")},
 	}
 	for _, c := range cases {
 		ad, err := Get(c.id)
@@ -136,5 +140,45 @@ func TestGetUnknown(t *testing.T) {
 func TestParseScope(t *testing.T) {
 	if _, err := ParseScope("global"); err == nil {
 		t.Fatal("esperava erro")
+	}
+}
+
+func TestCrushAndOpenCode(t *testing.T) {
+	env := fakeEnv(t, "crush")
+	xdg := t.TempDir()
+	vars := map[string]string{"XDG_CONFIG_HOME": xdg}
+	env.Getenv = func(k string) string { return vars[k] }
+
+	cr, _ := Get("crush")
+	if d := cr.Detect(env); !d.Installed {
+		t.Error("crush pelo binário")
+	}
+	if got, _ := cr.SkillsRoot(ScopeUser, env); got != filepath.Join(xdg, "crush", "skills") {
+		t.Errorf("XDG: %s", got)
+	}
+	vars["CRUSH_SKILLS_DIR"] = "/skills/crush"
+	if got, _ := cr.SkillsRoot(ScopeUser, env); got != "/skills/crush" {
+		t.Errorf("CRUSH_SKILLS_DIR: %s", got)
+	}
+
+	oc, _ := Get("opencode")
+	if oc.Detect(env).Installed {
+		t.Fatal("opencode não está instalado")
+	}
+	if err := os.Mkdir(filepath.Join(env.Home, ".opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !oc.Detect(env).Installed {
+		t.Error("opencode por ~/.opencode (instalador oficial)")
+	}
+	if got, _ := oc.SkillsRoot(ScopeUser, env); got != filepath.Join(xdg, "opencode", "skills") {
+		t.Errorf("opencode XDG: %s", got)
+	}
+	for _, ad := range []Adapter{cr, oc} {
+		for _, m := range manifest.AllModules {
+			if ad.Supports(m) != (m == manifest.ModuleSkills) {
+				t.Errorf("%s: Supports(%s)", ad.ID(), m)
+			}
+		}
 	}
 }

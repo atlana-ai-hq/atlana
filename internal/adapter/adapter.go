@@ -80,14 +80,14 @@ type Adapter interface {
 
 // All devolve todos os adaptadores conhecidos, ordenados por ID.
 func All() []Adapter {
-	list := []Adapter{cursor{}, claude{}, codex{}, gemini{}, grok{}}
+	list := []Adapter{cursor{}, claude{}, codex{}, crush{}, gemini{}, grok{}, opencode{}}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID() < list[j].ID() })
 	return list
 }
 
 // Get busca um adaptador por ID.
 func Get(id string) (Adapter, error) {
-	ids := make([]string, 0, 5)
+	ids := make([]string, 0, 7)
 	for _, a := range All() {
 		if a.ID() == id {
 			return a, nil

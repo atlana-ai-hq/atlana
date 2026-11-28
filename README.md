@@ -2,7 +2,7 @@
 
 **Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), além de **subagents** e **hooks** no Claude Code e no Gemini CLI. Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), **skills** no Crush e no OpenCode, além de **subagents** e **hooks** no Claude Code e no Gemini CLI. Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -91,6 +91,8 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 | Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ |
 | Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ |
+| Crush | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
+| OpenCode | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ |
 
 No Grok Bot, `install --agent grok` exporta as pastas `SKILL.md` (formato Agent Skills) para `~/.config/atlana/exports/grok/skills/` (ou `.atlana/exports/grok/skills/` com `--scope project`), e você envia cada pasta pelo Grok. Lock, `status` e `uninstall` funcionam igual. Sem MCP remoto nem sync automático no v1 ([ADR 0002](docs/adr/0002-grok-exporta-skills.md)).
 
@@ -109,6 +111,8 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] Spec v0.1 + JSON Schema, `validate`, `doctor`
 - [x] Planner, lockfile, `install`/`status`/`uninstall` de skills (Cursor, Claude Code)
 - [x] Exportação de skills para o Grok Bot
+- [x] Skills no Crush e no OpenCode ([ADR 0009](docs/adr/0009-crush-e-opencode.md))
+- [ ] Rules, MCP, subagents e hooks no Crush e no OpenCode
 - [x] Skills no Gemini CLI
 - [x] Skills no Codex
 - [x] Rules em arquivos próprios (Claude Code, Cursor, Gemini CLI, Codex)
