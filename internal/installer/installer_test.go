@@ -739,3 +739,81 @@ func TestHookFallbacks(t *testing.T) {
 		t.Fatalf("fallback fail deveria bloquear: %v", p.Conflicts)
 	}
 }
+
+func TestOpenCodeRulesAndHooks(t *testing.T) {
+	f := setupAgentsHooks(t)
+	write(t, filepath.Join(f.pack.Dir, "AGENTS.md"), "# Regras\n")
+	write(t, filepath.Join(f.pack.Dir, "docs", "estilo.md"), "Estilo.\n")
+	f.pack.Modules.Rules = []string{"AGENTS.md", "docs/estilo.md"}
+	cfg := filepath.Join(f.env.Home, ".config", "opencode", "opencode.json")
+	write(t, cfg, `{"$schema": "https://opencode.ai/config.json", "instructions": ["~/meu.md"], "theme": "t"}`)
+
+	mods := []manifest.Module{manifest.ModuleRules, manifest.ModuleMCP, manifest.ModuleHooks}
+	p := f.planScope(t, adapter.ScopeUser, mods, "opencode")
+	if len(p.Conflicts) != 0 {
+		t.Fatal(p.Conflicts)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(f.env.Home, ".config", "opencode", "atlana", "atlana-demo")
+	for _, name := range []string{"AGENTS.md", "docs-estilo.md"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Errorf("rule %s: %v", name, err)
+		}
+	}
+	b, _ := os.ReadFile(cfg)
+	got := string(b)
+	for _, want := range []string{`"~/meu.md"`, `"theme": "t"`, `"demo"`, filepath.Join(root, "*.md")} {
+		if !strings.Contains(got, want) {
+			t.Errorf("opencode.json sem %s:\n%s", want, got)
+		}
+	}
+	plugin := filepath.Join(f.env.Home, ".config", "opencode", "plugins", "atlana-demo.js")
+	js, err := os.ReadFile(plugin)
+	if err != nil {
+		t.Fatal("plugin não gerado")
+	}
+	for _, want := range []string{`"tool.execute.before"`, `session.idle`, `"--pack", PACK`, `const EXE = "/usr/local/bin/atlana"`} {
+		if !strings.Contains(string(js), want) {
+			t.Errorf("plugin sem %s:\n%s", want, js)
+		}
+	}
+	if strings.Contains(string(js), "tool.execute.after") {
+		t.Error("post_tool não é usado pelo pack")
+	}
+	if again := f.planScope(t, adapter.ScopeUser, mods, "opencode"); again.Changes() != 0 {
+		t.Fatalf("reinstalar deveria ser idempotente: %v", ops(again))
+	}
+
+	u, _ := PlanUninstall("demo", nil, adapter.ScopeUser, f.env)
+	if err := Apply(u, now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(cfg)
+	got = string(b)
+	if strings.Contains(got, "atlana-demo") || strings.Contains(got, `"demo"`) || !strings.Contains(got, `"~/meu.md"`) || !strings.Contains(got, `"theme": "t"`) {
+		t.Fatalf("uninstall deveria tirar só o que é nosso:\n%s", got)
+	}
+	for _, p := range []string{plugin, root} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s deveria ter saído", p)
+		}
+	}
+}
+
+func TestOpenCodeProjectRulesEntryIsRelative(t *testing.T) {
+	f := setupAgentsHooks(t)
+	write(t, filepath.Join(f.pack.Dir, "AGENTS.md"), "# Regras\n")
+	f.pack.Modules.Rules = []string{"AGENTS.md"}
+	if err := Apply(f.planScope(t, adapter.ScopeProject, []manifest.Module{manifest.ModuleRules}, "opencode"), now); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(f.env.WorkDir, "opencode.json"))
+	if !strings.Contains(string(b), `".opencode/atlana/atlana-demo/*.md"`) {
+		t.Fatalf("project:\n%s", b)
+	}
+	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".opencode", "atlana", "atlana-demo", "AGENTS.md")); err != nil {
+		t.Fatal(err)
+	}
+}

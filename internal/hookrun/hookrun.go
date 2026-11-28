@@ -52,7 +52,7 @@ func Normalize(agent, event string, payload map[string]any, toolCategory func(st
 		ev.Tool = toolCategory(name)
 	}
 	if in, ok := payload["tool_input"].(map[string]any); ok {
-		ev.Path = str(in, "file_path", "path", "absolute_path", "notebook_path")
+		ev.Path = str(in, "file_path", "filePath", "path", "absolute_path", "notebook_path")
 		ev.Command = str(in, "command")
 	}
 	if ev.Path != "" && ev.Cwd != "" && filepath.IsAbs(ev.Path) {
@@ -137,11 +137,25 @@ func Hooks(dir string) ([]manifest.Hook, error) {
 
 // Dispatch roda os hooks que casam e devolve o exit code para o agente:
 // 2 se algum negou, 0 nos outros casos (falhas que não são negação só viram aviso).
-func Dispatch(dir string, ev Event, stderr io.Writer) int {
+// packs (opcional) limita aos hooks desses packs, para agentes com um plugin por pack.
+func Dispatch(dir string, ev Event, stderr io.Writer, packs ...string) int {
 	hooks, err := Hooks(dir)
 	if err != nil {
 		fmt.Fprintln(stderr, "atlana hook:", err)
 		return 0
+	}
+	if len(packs) > 0 {
+		want := map[string]bool{}
+		for _, p := range packs {
+			want[p] = true
+		}
+		kept := hooks[:0]
+		for _, h := range hooks {
+			if want[filepath.Base(filepath.Dir(h.Dir))] {
+				kept = append(kept, h)
+			}
+		}
+		hooks = kept
 	}
 	input, _ := json.Marshal(ev)
 	for _, h := range hooks {

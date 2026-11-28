@@ -488,6 +488,7 @@ func (a *App) hook(args []string) int {
 	agent := fs.String("agent", "", "agente que chamou")
 	event := fs.String("event", "", "evento canônico (pre_tool…)")
 	dir := fs.String("dir", "", "diretório dos hooks instalados")
+	pack := fs.String("pack", "", "só os hooks deste pack (agentes com um plugin por pack)")
 	if err := fs.Parse(args[1:]); err != nil || *agent == "" || *event == "" || *dir == "" {
 		fmt.Fprintln(a.Stderr, "uso: atlana hook dispatch --agent <id> --event <evento> --dir <diretório>")
 		return 2
@@ -497,8 +498,8 @@ func (a *App) hook(args []string) int {
 		fmt.Fprintln(a.Stderr, "atlana hook:", err)
 		return 0 // nunca travar o agente por erro nosso
 	}
-	ha, ok := ad.(adapter.HooksAdapter)
-	if !ok {
+	ha, ok := ad.(interface{ ToolCategory(string) string })
+	if !ok || !ad.Supports(manifest.ModuleHooks) {
 		fmt.Fprintln(a.Stderr, "atlana hook: o agente não tem hooks:", *agent)
 		return 0
 	}
@@ -509,6 +510,9 @@ func (a *App) hook(args []string) int {
 		}
 	}
 	ev := hookrun.Normalize(*agent, *event, payload, ha.ToolCategory)
+	if *pack != "" {
+		return hookrun.Dispatch(*dir, ev, a.Stderr, *pack)
+	}
 	return hookrun.Dispatch(*dir, ev, a.Stderr)
 }
 

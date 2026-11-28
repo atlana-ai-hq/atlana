@@ -268,6 +268,54 @@ func planRules(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 		return err
 	}
 	plan.Notes = append(plan.Notes, notes...)
+	if rc, ok := ad.(adapter.RulesConfigAdapter); ok {
+		return planRulesConfig(plan, lock, p, ad, rc, scope, env, len(outs) > 0)
+	}
+	return nil
+}
+
+// planRulesConfig põe (ou tira) da config do agente o item que carrega as rules do pack.
+func planRulesConfig(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapter, rc adapter.RulesConfigAdapter, scope adapter.Scope, env adapter.Env, want bool) error {
+	cfg, entry, err := rc.RulesConfig(p.Name, scope, env)
+	if err != nil {
+		return fmt.Errorf("%s: %w", ad.ID(), err)
+	}
+	kc, err := configFor(ad.ID(), manifest.ModuleRules, scope, env)
+	if err != nil {
+		return err
+	}
+	doc, base, err := openConfig(plan, cfg.Path, kc.open)
+	if err != nil {
+		plan.Conflicts = append(plan.Conflicts, fmt.Sprintf("%s: %v", ad.ID(), err))
+		return nil
+	}
+	prev, _ := lock.Find(p.Name, ad.ID(), string(manifest.ModuleRules))
+	var acts []Action
+	if want {
+		h, _ := doc.HashOf(entry, nil)
+		a := Action{Agent: ad.ID(), Module: manifest.ModuleRules, Path: cfg.Path, Key: entry, SHA256: h, Base: base, Op: OpUnchanged}
+		if _, ok := doc.Hash(entry); !ok {
+			a.Op = OpCreate
+			if err := doc.Set(entry, nil); err != nil {
+				return err
+			}
+		}
+		acts = append(acts, a)
+	}
+	for _, k := range prev.Keys {
+		if want && k.Name == entry {
+			continue
+		}
+		if cur, ok := doc.Hash(k.Name); ok && len(lock.KeyOwners(k.Path, k.Name)) <= 1 {
+			doc.Delete(k.Name)
+			acts = append(acts, Action{Op: OpRemove, Agent: ad.ID(), Module: manifest.ModuleRules, Path: cfg.Path, Key: k.Name, SHA256: cur, Base: base})
+		}
+	}
+	content := doc.Bytes()
+	for i := range acts {
+		acts[i].Content = content
+	}
+	plan.Actions = append(plan.Actions, acts...)
 	return nil
 }
 
@@ -377,6 +425,13 @@ func configFor(agent string, module manifest.Module, scope adapter.Scope, env ad
 			cfg, err := ma.MCPConfig(scope, env)
 			return keyedConfig{cfg, func(raw []byte) (configmerge.Doc, error) {
 				return configmerge.Parse(configmerge.Format(cfg.Format), raw, cfg.Section)
+			}}, err
+		}
+	case manifest.ModuleRules:
+		if rc, ok := ad.(adapter.RulesConfigAdapter); ok {
+			cfg, _, err := rc.RulesConfig("", scope, env)
+			return keyedConfig{cfg, func(raw []byte) (configmerge.Doc, error) {
+				return configmerge.ParseStringList(raw, cfg.Section)
 			}}, err
 		}
 	case manifest.ModuleHooks:

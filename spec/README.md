@@ -7,10 +7,10 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | Conteúdo | Padrão usado | Status na v0.1 |
 |---|---|---|
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
-| Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex) |
+| Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex, OpenCode) |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode) |
-| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI); fallback nos outros |
+| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI, OpenCode); fallback nos outros |
 | Commands | formato Atlana (`commands/<nome>.md`) | validado (existência), instalação futura |
 
 ## 1. Pack
@@ -143,6 +143,7 @@ Cada arquivo de `modules.rules` é instalado como arquivo próprio do Atlana. O 
 | Claude Code (`claude`) | `~/.claude/rules/atlana-<pack>/<arquivo>` | `.claude/rules/atlana-<pack>/<arquivo>` | automática |
 | Cursor (`cursor`) | não suportado (rules de usuário ficam no app) | `.cursor/rules/atlana-<pack>-<slug>.mdc` | automática (`alwaysApply: true`) |
 | Gemini CLI (`gemini`) | `~/.gemini/atlana/atlana-<pack>/<arquivo>` | `.gemini/atlana/atlana-<pack>/<arquivo>` | a CLI mostra a linha `@...` para o `GEMINI.md` |
+| OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/atlana/atlana-<pack>/<arquivo>.md` (plano: `docs/x.md` vira `docs-x.md`) | `.opencode/atlana/atlana-<pack>/<arquivo>.md` | um item por pack em `instructions` do `opencode.json(c)`: caminho absoluto `…/atlana-<pack>/*.md` (user) ou `.opencode/atlana/atlana-<pack>/*.md` (project) |
 | Codex CLI (`codex`) | `$CODEX_HOME/atlana/atlana-<pack>/<arquivo>` (padrão `~/.codex`) | `.codex/atlana/atlana-<pack>/<arquivo>` | manual, no `AGENTS.md` |
 
 No `.mdc` do Cursor, o `<slug>` é o caminho sem extensão com `/` trocado por `-`, e um frontmatter do arquivo de origem é substituído pelo do Cursor.
@@ -167,7 +168,7 @@ No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_
 |---|---|---|
 | Claude Code (`claude`) | `.claude/agents/<nome>.md` (tools `Read, Grep…`; model `inherit/haiku/opus`) | `.claude/settings.json` → `hooks` (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `Stop`) |
 | Gemini CLI (`gemini`) | `.gemini/agents/<nome>.md` (`kind: local`; tools `read_file…`; `fast`/`smart` usam o modelo da sessão, com aviso) | `.gemini/settings.json` → `hooks` (`BeforeTool`, `AfterTool`, `BeforeAgent`, `SessionStart`, `AfterAgent`) |
-| OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/agents/<nome>.md` ou `.opencode/agents/<nome>.md` (`mode: subagent`; `permission` com `edit`, `bash`, `webfetch`; `shell:readonly` vira `bash: ask`; leitura e busca sempre liberadas; `fast`/`smart` usam o modelo da sessão) | sem hooks de shell (só plugins JS) |
+| OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/agents/<nome>.md` ou `.opencode/agents/<nome>.md` (`mode: subagent`; `permission` com `edit`, `bash`, `webfetch`; `shell:readonly` vira `bash: ask`; leitura e busca sempre liberadas; `fast`/`smart` usam o modelo da sessão) | plugin gerado por pack em `$XDG_CONFIG_HOME/opencode/plugins/atlana-<pack>.js` (ou `.opencode/plugins/`), que chama `atlana hook dispatch --pack <pack>`: `tool.execute.before` (nega com exit 2), `tool.execute.after`, `session.created`, `session.idle`; sem `prompt_submit` |
 | Cursor, Codex | pulado, com aviso | `fallback` de cada hook |
 | Grok Bot | pulado, com aviso | `skip` (não tem rules) |
 

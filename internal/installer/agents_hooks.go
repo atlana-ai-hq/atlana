@@ -87,9 +87,16 @@ func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 		}
 		hooks = append(hooks, h)
 	}
-	ha, ok := ad.(adapter.HooksAdapter)
-	if !ok || !ad.Supports(manifest.ModuleHooks) {
+	ha, isConfig := ad.(adapter.HooksAdapter)
+	pa, isPlugin := ad.(adapter.PluginHooksAdapter)
+	if (!isConfig && !isPlugin) || !ad.Supports(manifest.ModuleHooks) {
 		return planHookFallbacks(plan, lock, p, ad, hooks, scope, env)
+	}
+	hookEvent := func(e string) (string, bool) {
+		if isPlugin {
+			return pa.HookEvent(e)
+		}
+		return ha.HookEvent(e)
 	}
 	if env.Exe == "" {
 		return errors.New("não sei o caminho do binário atlana para ligar os hooks")
@@ -105,7 +112,7 @@ func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 	fp := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleHooks, dir)
 	events := map[string]bool{}
 	for _, h := range hooks {
-		native, ok := ha.HookEvent(h.Event)
+		native, ok := hookEvent(h.Event)
 		if !ok {
 			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o evento %s do hook %s não existe neste agente (pulado)", ad.ID(), h.Event, h.Name))
 			continue
@@ -122,6 +129,9 @@ func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 		if err := copyTree(fp, h.Dir, filepath.Join(dir, p.Name, h.Name)); err != nil {
 			return err
 		}
+	}
+	if isPlugin {
+		return planHookPlugin(plan, fp, pa, p.Name, ad.ID(), dir, events, scope, env)
 	}
 	if err := fp.finish(); err != nil {
 		return err
@@ -189,6 +199,28 @@ func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 	}
 	plan.Actions = append(plan.Actions, acts...)
 	return nil
+}
+
+// planHookPlugin gera o plugin do pack (um arquivo do próprio pack no lock) no
+// lugar de itens de config. Sem eventos suportados, o plugin sai (finish remove).
+func planHookPlugin(plan *Plan, fp *filePlanner, pa adapter.PluginHooksAdapter, pack, agent, dir string, events map[string]bool, scope adapter.Scope, env adapter.Env) error {
+	if len(events) > 0 {
+		pdir, err := pa.PluginsDir(scope, env)
+		if err != nil {
+			return err
+		}
+		evs := make([]string, 0, len(events))
+		for e := range events {
+			evs = append(evs, e)
+		}
+		sort.Strings(evs)
+		file, content := pa.HookPlugin(pack, env.Exe, dir, evs)
+		if err := fp.add(Action{Path: filepath.Join(pdir, file), Content: content, SHA256: hashBytes(content)}); err != nil {
+			return err
+		}
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: os hooks entram por um plugin (%s); reinicie o %s para carregar", agent, file, agent))
+	}
+	return fp.finish()
 }
 
 // planHookFallbacks aplica rule | skip | fail para agentes sem hooks.

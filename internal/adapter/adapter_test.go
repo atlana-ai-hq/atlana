@@ -179,7 +179,7 @@ func TestCrushAndOpenCode(t *testing.T) {
 		if cr.Supports(m) != (m == manifest.ModuleSkills) {
 			t.Errorf("crush: Supports(%s)", m)
 		}
-		want := m == manifest.ModuleSkills || m == manifest.ModuleMCP || m == manifest.ModuleAgents
+		want := m != manifest.ModuleCommands
 		if oc.Supports(m) != want {
 			t.Errorf("opencode: Supports(%s)", m)
 		}
@@ -250,5 +250,26 @@ func TestOpenCodeSubagent(t *testing.T) {
 	_, b, _, _ = aa.Subagent(manifest.Subagent{Name: "livre", Description: "Tudo.", Model: "inherit", Body: "x"})
 	if strings.Contains(string(b), "permission") {
 		t.Errorf("sem tools = sem restrição:\n%s", b)
+	}
+}
+
+func TestOpenCodeToolCategoryAndPlugin(t *testing.T) {
+	ad, _ := Get("opencode")
+	pa := ad.(PluginHooksAdapter)
+	for native, want := range map[string]string{"bash": "shell", "edit": "edit", "apply_patch": "edit", "write": "write", "grep": "read", "webfetch": "", "github_create_issue": "mcp", "desconhecida": ""} {
+		if got := pa.ToolCategory(native); got != want {
+			t.Errorf("%s: %q, esperado %q", native, got, want)
+		}
+	}
+	if _, ok := pa.HookEvent("prompt_submit"); ok {
+		t.Error("prompt_submit não tem formato verificado no OpenCode")
+	}
+	file, js := pa.HookPlugin("meu-pack", `/opt/atlana "x"`, "/h/opencode", []string{"pre_tool", "session_start"})
+	got := string(js)
+	if file != "atlana-meu-pack.js" || !strings.Contains(got, "export const AtlanaHooks_meu_pack") || !strings.Contains(got, `const EXE = "/opt/atlana \"x\""`) {
+		t.Fatalf("plugin:\n%s", got)
+	}
+	if !strings.Contains(got, "session.created") || strings.Contains(got, "session.idle") || strings.Contains(got, "tool.execute.after") {
+		t.Fatalf("só os eventos usados:\n%s", got)
 	}
 }

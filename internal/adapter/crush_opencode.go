@@ -1,10 +1,12 @@
 package adapter
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
 )
@@ -70,7 +72,8 @@ func (opencode) Detect(env Env) Detection {
 	return detectBy(env, []string{"opencode"}, dirs)
 }
 func (opencode) Supports(m manifest.Module) bool {
-	return m == manifest.ModuleSkills || m == manifest.ModuleMCP || m == manifest.ModuleAgents
+	return m == manifest.ModuleSkills || m == manifest.ModuleMCP || m == manifest.ModuleAgents ||
+		m == manifest.ModuleRules || m == manifest.ModuleHooks
 }
 func (opencode) SkillsRoot(scope Scope, env Env) (string, error) {
 	return opencodeDir(scope, env, ".opencode", "skills")
@@ -181,4 +184,140 @@ func (opencode) Subagent(s manifest.Subagent) (string, []byte, []string, error) 
 	}
 	b, err := renderAgent(front, []string{"description", "mode", "permission"}, s.Body)
 	return s.Name + ".md", b, notes, err
+}
+
+// RulesConfigAdapter é implementado por agentes que só carregam rules listadas
+// na própria config (ex.: "instructions" do OpenCode). Os arquivos continuam
+// sendo do atlana; na config entra só um item por pack, com dono no lock.
+type RulesConfigAdapter interface {
+	RulesConfig(pack string, scope Scope, env Env) (cfg ConfigFile, entry string, err error)
+}
+
+// PluginHooksAdapter é implementado por agentes cujos hooks são plugins de
+// código, não itens de config: o atlana gera um plugin por pack que chama
+// `atlana hook dispatch --pack <pack>` (ADR 0011).
+type PluginHooksAdapter interface {
+	HookEvent(event string) (string, bool)
+	ToolCategory(native string) string
+	PluginsDir(scope Scope, env Env) (string, error)
+	HookPlugin(pack, exe, dir string, events []string) (file string, content []byte)
+}
+
+// opencode, rules: cada rule vira um arquivo plano em atlana/atlana-<pack>/,
+// porque um item absoluto de instructions só expande o glob no último trecho.
+func (opencode) RulesRoot(scope Scope, env Env) (string, error) {
+	return opencodeDir(scope, env, ".opencode", "atlana")
+}
+
+func (o opencode) Rules(pack string, files []RuleFile, scope Scope, env Env) ([]RuleOutput, []string, error) {
+	root, err := o.RulesRoot(scope, env)
+	if err != nil {
+		return nil, nil, err
+	}
+	seen := map[string]string{}
+	out := make([]RuleOutput, 0, len(files))
+	for _, f := range files {
+		name := strings.ReplaceAll(strings.TrimSuffix(f.Rel, filepath.Ext(f.Rel)), "/", "-") + ".md"
+		if prev, ok := seen[name]; ok {
+			return nil, nil, fmt.Errorf("opencode: %s e %s viram o mesmo arquivo %s", prev, f.Rel, name)
+		}
+		seen[name] = f.Rel
+		out = append(out, RuleOutput{Path: filepath.Join(root, "atlana-"+pack, name), Content: f.Content})
+	}
+	return out, nil, nil
+}
+
+func (o opencode) RulesConfig(pack string, scope Scope, env Env) (ConfigFile, string, error) {
+	cfg, err := o.MCPConfig(scope, env)
+	if err != nil {
+		return ConfigFile{}, "", err
+	}
+	cfg.Section = "instructions"
+	if scope == ScopeUser {
+		root, err := o.RulesRoot(scope, env)
+		return cfg, filepath.Join(root, "atlana-"+pack, "*.md"), err
+	}
+	// No projeto, caminho relativo: o OpenCode procura a partir do diretório atual.
+	return cfg, ".opencode/atlana/atlana-" + pack + "/*.md", nil
+}
+
+var opencodeEvents = map[string]string{
+	"pre_tool": "tool.execute.before", "post_tool": "tool.execute.after",
+	"session_start": "session.created", "stop": "session.idle",
+}
+
+func (opencode) HookEvent(e string) (string, bool) { n, ok := opencodeEvents[e]; return n, ok }
+
+var opencodeBuiltinTools = map[string]string{
+	"bash": "shell", "edit": "edit", "multiedit": "edit", "patch": "edit", "apply_patch": "edit",
+	"write": "write", "read": "read", "glob": "read", "grep": "read", "list": "read",
+	"webfetch": "", "websearch": "", "codesearch": "", "task": "", "todowrite": "", "todoread": "",
+	"skill": "", "question": "", "lsp": "",
+}
+
+// ToolCategory: ferramentas de MCP aparecem como <servidor>_<ferramenta>.
+func (opencode) ToolCategory(native string) string {
+	if c, ok := opencodeBuiltinTools[native]; ok {
+		return c
+	}
+	if strings.Contains(native, "_") {
+		return "mcp"
+	}
+	return ""
+}
+
+func (opencode) PluginsDir(scope Scope, env Env) (string, error) {
+	return opencodeDir(scope, env, ".opencode", "plugins")
+}
+
+// HookPlugin gera um plugin V1 do OpenCode (o formato que a 1.18 carrega de
+// plugins/). Exit 2 do dispatcher em tool.execute.before nega a ferramenta.
+func (opencode) HookPlugin(pack, exe, dir string, events []string) (string, []byte) {
+	q := func(s string) string { b, _ := json.Marshal(s); return string(b) }
+	ident := strings.NewReplacer("-", "_", ".", "_").Replace(pack)
+	has := map[string]bool{}
+	for _, e := range events {
+		has[e] = true
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "// Gerado pelo atlana para o pack %s. Não edite: o atlana atualiza e remove este arquivo.\n", pack)
+	b.WriteString("import { spawnSync } from \"node:child_process\";\n\n")
+	fmt.Fprintf(&b, "const EXE = %s;\nconst DIR = %s;\nconst PACK = %s;\n\n", q(exe), q(filepath.Clean(dir)), q(pack))
+	b.WriteString(`function dispatch(event, payload, block) {
+  const r = spawnSync(EXE, ["hook", "dispatch", "--agent", "opencode", "--event", event, "--dir", DIR, "--pack", PACK], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    timeout: 120000,
+  });
+  if (block && r.status === 2) {
+    throw new Error((r.stderr || "").trim() || "ação negada por um hook do atlana (" + event + ")");
+  }
+}
+
+`)
+	fmt.Fprintf(&b, "export const AtlanaHooks_%s = async ({ directory }) => ({\n", ident)
+	if has["pre_tool"] {
+		b.WriteString(`  "tool.execute.before": async (input, output) => {
+    dispatch("pre_tool", { tool_name: input.tool, tool_input: (output && output.args) || {}, session_id: input.sessionID, cwd: directory }, true);
+  },
+`)
+	}
+	if has["post_tool"] {
+		b.WriteString(`  "tool.execute.after": async (input) => {
+    dispatch("post_tool", { tool_name: input.tool, tool_input: input.args || {}, session_id: input.sessionID, cwd: directory }, false);
+  },
+`)
+	}
+	if has["session_start"] || has["stop"] {
+		b.WriteString("  event: async ({ event }) => {\n    const type = event && event.type;\n")
+		if has["session_start"] {
+			b.WriteString(`    if (type === "session.created") dispatch("session_start", { cwd: directory }, false);` + "\n")
+		}
+		if has["stop"] {
+			b.WriteString(`    if (type === "session.idle") dispatch("stop", { cwd: directory }, false);` + "\n")
+		}
+		b.WriteString("  },\n")
+	}
+	b.WriteString("});\n")
+	return "atlana-" + pack + ".js", []byte(b.String())
 }
