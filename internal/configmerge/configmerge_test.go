@@ -160,3 +160,22 @@ func TestArrayItems(t *testing.T) {
 		t.Fatal("evento que não é lista deveria falhar")
 	}
 }
+
+func TestJSONDropsEmptySectionAfterDelete(t *testing.T) {
+	d, err := Parse(JSON, []byte(`{"theme":"dark","atlana":{"guard":{"a":1}}}`), "atlana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Delete("guard")
+	if got := string(d.Bytes()); strings.Contains(got, "atlana") || !strings.Contains(got, `"theme": "dark"`) {
+		t.Fatalf("seção vazia deveria sumir:\n%s", got)
+	}
+	// Seção vazia que já existia e não foi mexida fica.
+	d, _ = Parse(JSON, []byte(`{"atlana":{}}`), "atlana")
+	if err := d.Set("x", map[string]any{"a": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(d.Bytes()), `"atlana"`) {
+		t.Fatal("seção com item deveria ficar")
+	}
+}

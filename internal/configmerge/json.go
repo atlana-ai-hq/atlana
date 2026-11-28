@@ -87,6 +87,7 @@ type jsonDoc struct {
 	top     *object
 	section string
 	servers *object
+	deleted bool // a seção ficou vazia por remoção nossa: some do arquivo
 }
 
 func parseJSON(raw []byte, section string) (*jsonDoc, error) {
@@ -145,10 +146,15 @@ func (d *jsonDoc) Set(name string, v map[string]any) error {
 	return nil
 }
 
-func (d *jsonDoc) Delete(name string) { d.servers.delete(name) }
+func (d *jsonDoc) Delete(name string) { d.servers.delete(name); d.deleted = true }
 
 func (d *jsonDoc) Bytes() []byte {
-	d.top.set(d.section, d.servers.marshal())
+	if d.deleted && len(d.servers.keys) == 0 {
+		// Não deixa "atlana": {} (ou "mcpServers": {}) para trás no uninstall.
+		d.top.delete(d.section)
+	} else {
+		d.top.set(d.section, d.servers.marshal())
+	}
 	var out bytes.Buffer
 	if err := json.Indent(&out, d.top.marshal(), "", "  "); err != nil {
 		panic(err) // só juntamos JSON já validado
