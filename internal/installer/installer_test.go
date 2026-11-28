@@ -902,3 +902,57 @@ func TestAntigravityHookMatcher(t *testing.T) {
 		t.Fatalf("sem filtro: %q", m)
 	}
 }
+
+func TestOpenCodeSkillsNotDuplicated(t *testing.T) {
+	f := setup(t, "alpha")
+	ocSkill := filepath.Join(f.env.Home, ".config", "opencode", "skills", "alpha", "SKILL.md")
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	skills := []manifest.Module{manifest.ModuleSkills}
+
+	// Sozinho: o OpenCode recebe as skills na pasta dele.
+	if err := Apply(f.planScope(t, adapter.ScopeUser, skills, "opencode"), now); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(ocSkill) {
+		t.Fatal("opencode sozinho deveria instalar em ~/.config/opencode/skills")
+	}
+
+	// Com o Claude: o OpenCode lê ~/.claude/skills, então a cópia dele sai.
+	p := f.planScope(t, adapter.ScopeUser, skills, "claude", "opencode")
+	if !strings.Contains(strings.Join(p.Notes, "\n"), "opencode: as skills vêm de claude") {
+		t.Fatalf("nota: %v", p.Notes)
+	}
+	if err := Apply(p, now); err != nil {
+		t.Fatal(err)
+	}
+	if exists(ocSkill) || !exists(filepath.Join(f.env.Home, ".claude", "skills", "alpha", "SKILL.md")) {
+		t.Fatal("a cópia do opencode deveria sair e a do claude ficar")
+	}
+
+	// Depois, --agent opencode sozinho continua pulando (o lock tem o claude).
+	if again := f.planScope(t, adapter.ScopeUser, skills, "opencode"); again.Changes() != 0 {
+		t.Fatalf("opencode com claude no lock: %v", ops(again))
+	}
+
+	// Codex (.agents/skills) também cobre; o desligamento externo do OpenCode desfaz.
+	g := setup(t, "beta")
+	if p := g.planScope(t, adapter.ScopeProject, skills, "codex", "opencode"); !strings.Contains(strings.Join(p.Notes, "\n"), "vêm de codex") {
+		t.Fatalf("codex: %v", p.Notes)
+	}
+	g.env.Getenv = func(k string) string {
+		if k == "OPENCODE_DISABLE_EXTERNAL_SKILLS" {
+			return "1"
+		}
+		return ""
+	}
+	p = g.planScope(t, adapter.ScopeProject, skills, "codex", "opencode")
+	found := false
+	for _, a := range p.Actions {
+		if a.Agent == "opencode" && a.Op == OpCreate {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("com OPENCODE_DISABLE_EXTERNAL_SKILLS o opencode instala: %v", p.Notes)
+	}
+}

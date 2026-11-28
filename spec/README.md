@@ -133,6 +133,8 @@ Toda implementação da CLI precisa respeitar:
 | Crush (`crush`) | `$CRUSH_SKILLS_DIR` ou `$XDG_CONFIG_HOME/crush/skills/<skill>/` | `.crush/skills/<skill>/` |
 | OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/skills/<skill>/` | `.opencode/skills/<skill>/` |
 
+O OpenCode também lê `.claude/skills` e `.agents/skills` (user e project). Se o mesmo pack vai para o Claude Code ou o Codex no mesmo escopo (no mesmo comando ou já no lock), o atlana não grava uma terceira cópia em `skills/` do OpenCode e remove as que ele mesmo gravou antes. Com `OPENCODE_DISABLE_EXTERNAL_SKILLS` (ou `OPENCODE_DISABLE_CLAUDE_CODE*`, para o Claude) no ambiente, a cópia volta.
+
 O Grok Bot não tem pasta local de skills: o adaptador exporta as skills sem mudanças, e a pessoa envia cada pasta pelo próprio Grok. O lock registra os arquivos exportados como qualquer outra instalação.
 
 ## 8. Onde cada agente recebe rules (v0.1)

@@ -149,6 +149,8 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 		}
 	}
 
+	ocCovered := opencodeSkillsCoveredBy(req, lock, modules)
+
 	for _, ad := range req.Agents {
 		if !p.Targets.Allows(ad.ID()) {
 			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: o pack exclui este agente (targets)", ad.ID()))
@@ -171,6 +173,15 @@ func PlanInstall(req InstallRequest) (*Plan, error) {
 			}
 			switch m {
 			case manifest.ModuleSkills:
+				if ad.ID() == "opencode" && ocCovered != "" {
+					// O OpenCode já lê as skills do Claude (.claude/skills) e do Codex
+					// (.agents/skills); uma terceira cópia só gera "duplicate skill name".
+					plan.Notes = append(plan.Notes, fmt.Sprintf("opencode: as skills vêm de %s, que o OpenCode também lê; nada é gravado em skills/ do OpenCode (e cópias antigas do atlana lá são removidas)", ocCovered))
+					if err := newFilePlanner(plan, lock, p.Name, ad.ID(), manifest.ModuleSkills, mustSkillsRoot(ad, req.Scope, req.Env)).finish(); err != nil {
+						return nil, err
+					}
+					continue
+				}
 				if err := planSkills(plan, lock, p, ad, req.Scope, req.Env); err != nil {
 					return nil, err
 				}
@@ -904,4 +915,53 @@ func pruneEmptyDirs(dir, root string) {
 		}
 		dir = filepath.Dir(dir)
 	}
+}
+
+// opencodeSkillsCoveredBy diz qual agente já entrega as skills do pack para o
+// OpenCode, que também varre .claude/skills e .agents/skills (user e project),
+// a menos que OPENCODE_DISABLE_EXTERNAL_SKILLS ou OPENCODE_DISABLE_CLAUDE_CODE*
+// estejam ligados. Vale para agentes do mesmo plano ou já instalados no lock.
+func opencodeSkillsCoveredBy(req InstallRequest, lock *lockfile.Lock, modules []manifest.Module) string {
+	hasSkills := false
+	for _, m := range modules {
+		if m == manifest.ModuleSkills {
+			hasSkills = true
+		}
+	}
+	if !hasSkills || len(req.Pack.Modules.Skills) == 0 {
+		return ""
+	}
+	flag := func(k string) bool {
+		if req.Env.Getenv == nil {
+			return false
+		}
+		v := strings.ToLower(strings.TrimSpace(req.Env.Getenv(k)))
+		return v != "" && v != "0" && v != "false"
+	}
+	if flag("OPENCODE_DISABLE_EXTERNAL_SKILLS") {
+		return ""
+	}
+	readers := []string{"codex"} // .agents/skills
+	if !flag("OPENCODE_DISABLE_CLAUDE_CODE") && !flag("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS") {
+		readers = append([]string{"claude"}, readers...) // .claude/skills
+	}
+	for _, id := range readers {
+		if !req.Pack.Targets.Allows(id) {
+			continue
+		}
+		for _, ad := range req.Agents {
+			if ad.ID() == id {
+				return id
+			}
+		}
+		if _, ok := lock.Find(req.Pack.Name, id, string(manifest.ModuleSkills)); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+func mustSkillsRoot(ad adapter.Adapter, scope adapter.Scope, env adapter.Env) string {
+	root, _ := ad.SkillsRoot(scope, env)
+	return root
 }
