@@ -14,6 +14,8 @@ O ADR 0013 deixou hooks e subagents do Antigravity para depois. Pela documentaç
 - O dispatcher ganha uma saída própria para o Antigravity: `{"decision":"deny","reason":…}` quando um hook nega em `pre_tool`; `{"decision":"ask"}` quando nenhum nega, porque o `agy` trata a falta de decisão como negação (testado: `{}` bloqueou uma escrita fora de `.plan/`), e `ask` devolve a chamada ao fluxo normal de permissões, respeitando o "Always Allow"; `{}` nos outros eventos. Nunca `allow`, que aprovaria a ferramenta sem passar pelas permissões da pessoa. O exit code fica sempre 0.
 - `Normalize` lê `toolCall.name`, `args.TargetFile | AbsolutePath | Path`, `args.CommandLine` e `lastUserInput`.
 
+- O `matcher` dos eventos de ferramenta é a união das ferramentas filtradas pelos hooks daquele evento (os do pack e os já instalados de outros packs), traduzidas para nomes nativos (`shell` → `run_command`, `edit` → `edit_file`…). Um hook sem `tool` volta para `*`. Sem isso, o `ask` pedia confirmação para toda ferramenta. Na desinstalação o matcher pode ficar mais largo que o necessário, o que só gera confirmações a mais.
+
 ## Consequências
 
-O mesmo hook do pack nega a ação no Claude Code, no Gemini CLI, no OpenCode e no Antigravity. Com o hook instalado, ferramentas que hoje rodam sozinhas no modo automático podem passar a pedir confirmação (efeito do `ask`). Não verificado ao vivo: se encontra os subagents de `~/.gemini/config/agents` (`agy agents` não lista nada fora de uma sessão).
+O mesmo hook do pack nega a ação no Claude Code, no Gemini CLI, no OpenCode e no Antigravity. Ferramentas que algum hook filtra passam a pedir confirmação quando nenhum hook nega (efeito do `ask`); as outras seguem como antes. Não verificado ao vivo: se encontra os subagents de `~/.gemini/config/agents` (`agy agents` não lista nada fora de uma sessão).

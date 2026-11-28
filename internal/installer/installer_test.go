@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -844,5 +845,60 @@ func TestCommandsInstall(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.env.WorkDir, ".claude", "commands", "commit.md")); !os.IsNotExist(err) {
 		t.Fatal("uninstall deveria remover o command")
+	}
+}
+
+func TestAntigravityHookMatcher(t *testing.T) {
+	f := setupAgentsHooks(t) // guard: pre_tool, tool [edit, write]
+	hooks := []manifest.Module{manifest.ModuleHooks}
+	matcher := func() string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(f.env.WorkDir, ".agents", "hooks.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]map[string][]map[string]any
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatal(err)
+		}
+		return doc["atlana"]["PreToolUse"][0]["matcher"].(string)
+	}
+	if err := Apply(f.planScope(t, adapter.ScopeProject, hooks, "antigravity"), now); err != nil {
+		t.Fatal(err)
+	}
+	if m := matcher(); m != "edit_file|write_file" {
+		t.Fatalf("só as ferramentas do hook: %q", m)
+	}
+
+	// Outro pack com hook de shell: o matcher compartilhado vira a união.
+	d := t.TempDir()
+	write(t, filepath.Join(d, "atlana.yaml"), "apiVersion: atlana/v1\nkind: Pack\nname: shellguard\nversion: 0.1.0\ndescription: d\nmodules:\n  hooks: [noforce]\n")
+	write(t, filepath.Join(d, "hooks", "noforce", "hook.yaml"), "name: noforce\nevent: pre_tool\nmatch:\n  tool: [shell]\nrun: ./run.sh\nfallback: skip\n")
+	write(t, filepath.Join(d, "hooks", "noforce", "run.sh"), "#!/bin/sh\n")
+	os.Chmod(filepath.Join(d, "hooks", "noforce", "run.sh"), 0o755)
+	p2, rep, err := manifest.Load(d)
+	if err != nil {
+		t.Fatal(err, rep.Issues)
+	}
+	plan, err := PlanInstall(InstallRequest{Pack: p2, Agents: agents(t, "antigravity"), Modules: hooks, Scope: adapter.ScopeProject, Env: f.env})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(plan, now); err != nil {
+		t.Fatal(err)
+	}
+	if m := matcher(); m != "edit_file|run_command|write_file" {
+		t.Fatalf("união: %q", m)
+	}
+
+	// Um hook sem filtro de ferramenta volta para "*".
+	write(t, filepath.Join(d, "hooks", "noforce", "hook.yaml"), "name: noforce\nevent: pre_tool\nrun: ./run.sh\nfallback: skip\n")
+	p2, _, _ = manifest.Load(d)
+	plan, _ = PlanInstall(InstallRequest{Pack: p2, Agents: agents(t, "antigravity"), Modules: hooks, Scope: adapter.ScopeProject, Env: f.env})
+	if err := Apply(plan, now); err != nil {
+		t.Fatal(err)
+	}
+	if m := matcher(); m != "*" {
+		t.Fatalf("sem filtro: %q", m)
 	}
 }

@@ -452,3 +452,26 @@ func TestAntigravityAgentsAndHooks(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityToolMatcher(t *testing.T) {
+	a := antigravity{}
+	for _, c := range []struct {
+		in   []string
+		want string
+	}{
+		{[]string{"shell"}, "run_command"},
+		{[]string{"write", "edit", "edit"}, "edit_file|write_file"},
+		{[]string{"read"}, "find|grep_search|list_directory|read_file|view_file"},
+		{[]string{""}, "*"},
+		{[]string{"shell", "desconhecida"}, "*"},
+		{nil, "*"},
+	} {
+		if got := a.ToolMatcher(c.in); got != c.want {
+			t.Errorf("%v: %q, esperado %q", c.in, got, c.want)
+		}
+	}
+	// Claude não restringe: lá a falta de decisão segue o fluxo normal.
+	if _, ok := Adapter(claude{}).(ToolMatcherAdapter); ok {
+		t.Error("claude não deveria implementar ToolMatcherAdapter")
+	}
+}

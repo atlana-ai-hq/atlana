@@ -191,6 +191,9 @@ func planHooks(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Ada
 	for _, e := range evs {
 		native, _ := ha.HookEvent(e)
 		item := ha.HookEntry(native, adapter.DispatchCommand(env.Exe, ad.ID(), e, dir))
+		if tm, ok := ad.(adapter.ToolMatcherAdapter); ok && item["matcher"] != nil {
+			item["matcher"] = tm.ToolMatcher(toolCategories(hooks, e, dir, p.Name))
+		}
 		want, err := doc.HashOf(native, item)
 		if err != nil {
 			return err
@@ -328,4 +331,34 @@ func copyTree(fp *filePlanner, src, dst string) error {
 func hashBytes(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// toolCategories junta as ferramentas que os hooks do evento filtram: os do
+// pack que está sendo instalado e os de outros packs já instalados em dir.
+// Um hook sem filtro de ferramenta devolve "" (o matcher vira "*"). Na
+// desinstalação o matcher pode ficar mais largo que o necessário: isso só
+// gera confirmações a mais, nunca tira proteção.
+func toolCategories(current []manifest.Hook, event, dir, pack string) []string {
+	all := append([]manifest.Hook(nil), current...)
+	files, _ := filepath.Glob(filepath.Join(dir, "*", "*", "hook.yaml"))
+	for _, f := range files {
+		hd := filepath.Dir(f)
+		if filepath.Base(filepath.Dir(hd)) == pack {
+			continue // a versão atual vem de current
+		}
+		if h, err := manifest.ParseHook(hd); err == nil {
+			all = append(all, h)
+		}
+	}
+	var cats []string
+	for _, h := range all {
+		if h.Event != event {
+			continue
+		}
+		if len(h.Match.Tool) == 0 {
+			return []string{""}
+		}
+		cats = append(cats, h.Match.Tool...)
+	}
+	return cats
 }

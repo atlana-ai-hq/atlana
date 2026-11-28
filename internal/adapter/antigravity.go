@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/atlana-ai-hq/atlana/internal/manifest"
@@ -210,4 +211,44 @@ func AntigravityReply(event string, code int, reason string) []byte {
 		return b
 	}
 	return []byte(`{"decision":"ask"}`)
+}
+
+// ToolMatcherAdapter é implementado por agentes cujo matcher de hook de
+// ferramenta pode ser restrito às ferramentas que os hooks usam. No
+// Antigravity, todo PreToolUse precisa de uma decisão, e "ask" pede
+// confirmação; restringir o matcher evita a pergunta nas outras ferramentas.
+type ToolMatcherAdapter interface {
+	// ToolMatcher devolve o matcher para as categorias (shell, edit…); "*" se
+	// alguma for "" (hook sem filtro de ferramenta) ou desconhecida.
+	ToolMatcher(categories []string) string
+}
+
+var antigravityToolNames = map[string][]string{
+	"shell": {"run_command"},
+	"edit":  {"edit_file"},
+	"write": {"write_file"},
+	"read":  {"read_file", "view_file", "list_directory", "grep_search", "find"},
+	"mcp":   {"mcp_tool", "mcp_.*"},
+}
+
+func (antigravity) ToolMatcher(categories []string) string {
+	seen := map[string]bool{}
+	var names []string
+	for _, c := range categories {
+		native, ok := antigravityToolNames[c]
+		if !ok {
+			return "*"
+		}
+		for _, n := range native {
+			if !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return "*"
+	}
+	sort.Strings(names)
+	return strings.Join(names, "|")
 }
