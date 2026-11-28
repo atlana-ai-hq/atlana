@@ -440,12 +440,15 @@ func TestAntigravityAgentsAndHooks(t *testing.T) {
 	if got := string(AntigravityReply("pre_tool", 2, "não edite .plan\n")); got != `{"decision":"deny","reason":"não edite .plan"}` {
 		t.Errorf("deny: %s", got)
 	}
+	if got := string(AntigravityReply("pre_tool", 0, "")); got != `{"decision":"ask"}` {
+		t.Errorf("sem objeção em pre_tool: %s (nunca allow; ausência vira negação)", got)
+	}
 	for _, c := range []struct {
 		ev   string
 		code int
-	}{{"pre_tool", 0}, {"stop", 2}, {"post_tool", 2}} {
+	}{{"stop", 2}, {"post_tool", 2}, {"session_start", 0}} {
 		if got := string(AntigravityReply(c.ev, c.code, "x")); got != "{}" {
-			t.Errorf("%v: %s (nunca allow)", c, got)
+			t.Errorf("%v: %s", c, got)
 		}
 	}
 }

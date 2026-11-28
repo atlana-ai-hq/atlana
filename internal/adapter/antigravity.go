@@ -197,12 +197,17 @@ func (antigravity) HookEntry(nativeEvent, command string) map[string]any {
 }
 
 // AntigravityReply traduz o resultado do dispatcher para o stdout do
-// Antigravity. Só nega quando um hook negou (exit 2) num pre_tool; nos outros
-// casos devolve {}, sem "allow", para não pular as permissões da pessoa.
+// Antigravity. Em pre_tool, a decisão é obrigatória e a ausência vira negação
+// (visto no agy 1.5.18): sem objeção, responde "ask", que devolve a chamada ao
+// fluxo normal de permissões da pessoa (respeita o "Always Allow"). Nunca
+// "allow", que pularia essas permissões. Os outros eventos recebem {}.
 func AntigravityReply(event string, code int, reason string) []byte {
-	if code == 2 && event == "pre_tool" {
+	if event != "pre_tool" {
+		return []byte("{}")
+	}
+	if code == 2 {
 		b, _ := json.Marshal(map[string]string{"decision": "deny", "reason": strings.TrimSpace(reason)})
 		return b
 	}
-	return []byte("{}")
+	return []byte(`{"decision":"ask"}`)
 }

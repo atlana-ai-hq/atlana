@@ -11,9 +11,9 @@ O ADR 0013 deixou hooks e subagents do Antigravity para depois. Pela documentaç
 
 - Subagents: `agents/<nome>/agent.md` com `subagent: true` e `mainAgent: false`. As ferramentas abstratas viram `read_file`, `edit_file`, `write_file`, `run_command`/`manage_task` e `search_web`; `shell:readonly` e `mcp` ficam de fora com aviso. Sem `tools` no pack (= todas), o arquivo recebe a lista completa. `model` não tem equivalente e fica o da sessão.
 - Hooks: um hook nomeado `atlana` em `hooks.json`, editado pelo mesmo merge de itens de array dos outros agentes (os hooks da pessoa, como `herdr`, ficam intactos). `prompt_submit` não é mapeado, porque `PreInvocation` roda antes de cada chamada ao modelo.
-- O dispatcher ganha uma saída própria para o Antigravity: `{"decision":"deny","reason":…}` quando um hook nega em `pre_tool` e `{}` em todos os outros casos. Nunca `allow`, que aprovaria a ferramenta sem passar pelas permissões da pessoa. O exit code fica sempre 0.
+- O dispatcher ganha uma saída própria para o Antigravity: `{"decision":"deny","reason":…}` quando um hook nega em `pre_tool`; `{"decision":"ask"}` quando nenhum nega, porque o `agy` trata a falta de decisão como negação (testado: `{}` bloqueou uma escrita fora de `.plan/`), e `ask` devolve a chamada ao fluxo normal de permissões, respeitando o "Always Allow"; `{}` nos outros eventos. Nunca `allow`, que aprovaria a ferramenta sem passar pelas permissões da pessoa. O exit code fica sempre 0.
 - `Normalize` lê `toolCall.name`, `args.TargetFile | AbsolutePath | Path`, `args.CommandLine` e `lastUserInput`.
 
 ## Consequências
 
-O mesmo hook do pack nega a ação no Claude Code, no Gemini CLI, no OpenCode e no Antigravity. Não verificado ao vivo: se o Antigravity trata `{}` como "sem decisão" e se encontra os subagents de `~/.gemini/config/agents` (`agy agents` não lista nada fora de uma sessão).
+O mesmo hook do pack nega a ação no Claude Code, no Gemini CLI, no OpenCode e no Antigravity. Com o hook instalado, ferramentas que hoje rodam sozinhas no modo automático podem passar a pedir confirmação (efeito do `ask`). Não verificado ao vivo: se encontra os subagents de `~/.gemini/config/agents` (`agy agents` não lista nada fora de uma sessão).
