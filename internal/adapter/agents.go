@@ -70,7 +70,8 @@ type gemini struct{}
 func (gemini) ID() string   { return "gemini" }
 func (gemini) Name() string { return "Gemini CLI" }
 func (gemini) Detect(env Env) Detection {
-	return detectBy(env, []string{"gemini"}, []string{filepath.Join(env.Home, ".gemini")})
+	// ~/.gemini também é do Antigravity; só settings.json é do Gemini CLI.
+	return detectBy(env, []string{"gemini"}, []string{filepath.Join(env.Home, ".gemini", "settings.json")})
 }
 func (gemini) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||

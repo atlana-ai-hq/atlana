@@ -6,12 +6,12 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 
 | Conteúdo | Padrão usado | Status na v0.1 |
 |---|---|---|
-| Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI; exportado para o Grok Bot) |
-| Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex, OpenCode) |
-| MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex) |
+| Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI, Antigravity; exportado para o Grok Bot) |
+| Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Antigravity) |
+| MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Antigravity) |
 | Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode) |
 | Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI, OpenCode); fallback nos outros |
-| Commands | formato Atlana (`commands/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, Cursor, OpenCode) |
+| Commands | formato Atlana (`commands/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, Cursor, OpenCode, Antigravity) |
 
 ## 1. Pack
 
@@ -128,6 +128,7 @@ Toda implementação da CLI precisa respeitar:
 | Claude Code (`claude`) | `~/.claude/skills/<skill>/` | `.claude/skills/<skill>/` |
 | Codex CLI (`codex`) | `~/.agents/skills/<skill>/` | `.agents/skills/<skill>/` |
 | Gemini CLI (`gemini`) | `~/.gemini/skills/<skill>/` | `.gemini/skills/<skill>/` |
+| Antigravity (`antigravity`) | `~/.gemini/config/skills/<skill>/` | `.agents/skills/<skill>/` (a mesma pasta do Codex) |
 | Grok Bot (`grok`), só exporta | `$XDG_CONFIG_HOME/atlana/exports/grok/skills/<skill>/` (padrão `~/.config/...`) | `.atlana/exports/grok/skills/<skill>/` |
 | Crush (`crush`) | `$CRUSH_SKILLS_DIR` ou `$XDG_CONFIG_HOME/crush/skills/<skill>/` | `.crush/skills/<skill>/` |
 | OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/skills/<skill>/` | `.opencode/skills/<skill>/` |
@@ -143,6 +144,7 @@ Cada arquivo de `modules.rules` é instalado como arquivo próprio do Atlana. O 
 | Claude Code (`claude`) | `~/.claude/rules/atlana-<pack>/<arquivo>` | `.claude/rules/atlana-<pack>/<arquivo>` | automática |
 | Cursor (`cursor`) | não suportado (rules de usuário ficam no app) | `.cursor/rules/atlana-<pack>-<slug>.mdc` | automática (`alwaysApply: true`) |
 | Gemini CLI (`gemini`) | `~/.gemini/atlana/atlana-<pack>/<arquivo>` | `.gemini/atlana/atlana-<pack>/<arquivo>` | a CLI mostra a linha `@...` para o `GEMINI.md` |
+| Antigravity (`antigravity`) | `~/.gemini/config/rules/atlana-<pack>-<arquivo>.md` | `.agents/rules/atlana-<pack>-<arquivo>.md` | arquivo plano com `trigger: always_on`; carregado sozinho |
 | OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/atlana/atlana-<pack>/<arquivo>.md` (plano: `docs/x.md` vira `docs-x.md`) | `.opencode/atlana/atlana-<pack>/<arquivo>.md` | um item por pack em `instructions` do `opencode.json(c)`: caminho absoluto `…/atlana-<pack>/*.md` (user) ou `.opencode/atlana/atlana-<pack>/*.md` (project) |
 | Codex CLI (`codex`) | `$CODEX_HOME/atlana/atlana-<pack>/<arquivo>` (padrão `~/.codex`) | `.codex/atlana/atlana-<pack>/<arquivo>` | manual, no `AGENTS.md` |
 
@@ -157,6 +159,7 @@ Cada servidor de `modules.mcp` entra por merge (ADR 0004). `${PLUGIN_ROOT}` vira
 | Claude Code (`claude`) | `~/.claude.json` → `mcpServers` | `.mcp.json` → `mcpServers` | igual; `url` sem `type` ganha `type: http` |
 | Cursor (`cursor`) | `~/.cursor/mcp.json` → `mcpServers` | `.cursor/mcp.json` → `mcpServers` | `${VAR}` vira `${env:VAR}` |
 | Gemini CLI (`gemini`) | `~/.gemini/settings.json` → `mcpServers` | `.gemini/settings.json` → `mcpServers` | `url` vira `httpUrl` (exceto `type: sse`) |
+| Antigravity (`antigravity`) | `~/.gemini/config/mcp_config.json` → `mcpServers` | não suportado | não expande `${VAR}`: `"NOME": "${NOME}"` em `env` sai da entrada (o servidor herda a variável do `agy`); outro `${VAR}` (ex.: `Bearer ${TOKEN}` em `headers`) recusa o servidor; `sse` é recusado |
 | OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/opencode.json` (ou `.jsonc`, se existir) → `mcp` | `opencode.json` na raiz → `mcp` | stdio vira `type: local` com `command` em array e `environment`; HTTP/SSE vira `type: remote`; `${VAR}` vira `{env:VAR}`; `cwd` é recusado |
 | Codex CLI (`codex`) | `$CODEX_HOME/config.toml` (padrão `~/.codex`) → `[mcp_servers.<nome>]` | `.codex/config.toml` | `env` vira `env_vars` (a variável precisa ter o mesmo nome); `Authorization: Bearer ${X}` vira `bearer_token_env_var`; outros headers, `env_http_headers` |
 
@@ -223,6 +226,7 @@ projects:
 |---|---|---|
 | Claude Code | `~/.claude/commands/` / `.claude/commands/` | igual |
 | Gemini CLI | `~/.gemini/commands/<nome>.toml` / `.gemini/commands/` | `description` + `prompt`; `$ARGUMENTS` vira `{{args}}` |
+| Antigravity | `~/.gemini/config/skills/<nome>/SKILL.md` / `.agents/skills/` | vira skill (no Antigravity a skill é o `/<nome>`; workflows estão descontinuados); `$ARGUMENTS` vira uma instrução |
 | Cursor | `~/.cursor/commands/` / `.cursor/commands/` | Markdown puro; o Cursor anexa o texto digitado (aviso se o corpo usa `$ARGUMENTS`) |
 | OpenCode | `$XDG_CONFIG_HOME/opencode/commands/` / `.opencode/commands/` | `description` + corpo; sem `argument-hint` |
 | Codex, Crush, Grok | não instalado | os custom prompts do Codex foram descontinuados: use uma skill |

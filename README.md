@@ -1,8 +1,8 @@
 # Atlana
 
-**Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI e em outros agentes.
+**Um formato, todos os agentes.** Escreva skills, subagents, hooks e servidores MCP uma vez, no formato Atlana, e instale só o que quiser no Cursor, no Claude Code, no Codex, no Gemini CLI, no Antigravity e em outros agentes.
 
-> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), **skills** no Crush e no OpenCode, e **rules**, **MCP**, **subagents** e **hooks** no OpenCode, além de **subagents** e **hooks** no Claude Code e no Gemini CLI. Os outros módulos e agentes estão no [roadmap](#roadmap).
+> Status: **v0.1, em construção.** Hoje a CLI valida packs e instala **skills**, **rules** e **servidores MCP** no Cursor, no Claude Code, no Codex e no Gemini CLI (e exporta skills para o Grok Bot), **skills** no Crush e no OpenCode, e **rules**, **MCP**, **subagents** e **hooks** no OpenCode, além de **subagents** e **hooks** no Claude Code e no Gemini CLI. No Antigravity: **skills**, **rules**, **MCP** e **commands** (como skills). Os outros módulos e agentes estão no [roadmap](#roadmap).
 
 [English below](#english)
 
@@ -90,6 +90,7 @@ Rode `atlana validate packs/hello` antes de abrir um PR. O schema completo está
 | Claude Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Codex CLI | ✅ | ✅ | ✅ (manual) | ⏳ | fallback | ✅ | ➖ (use skills) |
 | Gemini CLI | ✅ | ✅ | ✅ (`@import`) | ✅ | ✅ | ✅ | ✅ (TOML) |
+| Antigravity (`agy`) | ✅ | ✅ | ✅ | ⏳ | fallback | ✅ (user) | ✅ (vira skill) |
 | Grok Bot | ✅ | ✅ (exporta) | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Crush | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | OpenCode | ✅ | ✅ | ✅ (`instructions`) | ✅ | ✅ (plugin) | ✅ | ✅ |
@@ -116,6 +117,7 @@ Hooks só entram com `--only hooks`. Os scripts vão para uma pasta do Atlana, e
 - [x] Rules e hooks no OpenCode ([ADR 0011](docs/adr/0011-opencode-rules-e-hooks.md))
 - [ ] Rules, MCP, subagents e hooks no Crush
 - [x] Skills no Gemini CLI
+- [x] Antigravity: skills, rules, MCP e commands
 - [x] Skills no Codex
 - [x] Rules em arquivos próprios (Claude Code, Cursor, Gemini CLI, Codex)
 - [x] MCP com merge não destrutivo de JSON/TOML (sem gravar segredos)

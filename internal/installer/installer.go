@@ -335,6 +335,10 @@ func planMCP(plan *Plan, lock *lockfile.Lock, p *manifest.Pack, ad adapter.Adapt
 		return nil
 	}
 	cfg, err := ma.MCPConfig(scope, env)
+	if errors.Is(err, adapter.ErrUnsupported) {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %v (pulado)", ad.ID(), err))
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", ad.ID(), err)
 	}

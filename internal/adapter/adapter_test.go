@@ -34,11 +34,24 @@ func TestDetect(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(env.Home, ".gemini"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"claude": true, "gemini": true, "cursor": false, "codex": false, "grok": false, "crush": false, "opencode": false}
+	// Só ~/.gemini: é do Antigravity e do Gemini CLI, não prova nenhum dos dois.
+	want := map[string]bool{"claude": true}
 	for _, ad := range All() {
 		if got := ad.Detect(env).Installed; got != want[ad.ID()] {
 			t.Errorf("%s: Installed = %v, esperado %v", ad.ID(), got, want[ad.ID()])
 		}
+	}
+	os.WriteFile(filepath.Join(env.Home, ".gemini", "settings.json"), []byte("{}"), 0o644)
+	os.Mkdir(filepath.Join(env.Home, ".gemini", "antigravity-cli"), 0o755)
+	for _, id := range []string{"gemini", "antigravity"} {
+		ad, _ := Get(id)
+		if !ad.Detect(env).Installed {
+			t.Errorf("%s deveria ser detectado", id)
+		}
+	}
+	env2 := fakeEnv(t, "agy")
+	if ad, _ := Get("antigravity"); !ad.Detect(env2).Installed {
+		t.Error("antigravity pelo binário agy")
 	}
 }
 
@@ -315,6 +328,75 @@ func TestCommands(t *testing.T) {
 		ad, _ := Get(id)
 		if ad.Supports(manifest.ModuleCommands) {
 			t.Errorf("%s não instala commands", id)
+		}
+	}
+}
+
+func TestAntigravity(t *testing.T) {
+	env := fakeEnv(t)
+	ad, _ := Get("antigravity")
+	a := ad.(antigravity)
+	for _, c := range []struct {
+		scope         Scope
+		skills, rules string
+	}{
+		{ScopeUser, filepath.Join(env.Home, ".gemini", "config", "skills"), filepath.Join(env.Home, ".gemini", "config", "rules")},
+		{ScopeProject, filepath.Join(env.WorkDir, ".agents", "skills"), filepath.Join(env.WorkDir, ".agents", "rules")},
+	} {
+		if r, _ := a.SkillsRoot(c.scope, env); r != c.skills {
+			t.Errorf("skills %s: %s", c.scope, r)
+		}
+		if r, _ := a.RulesRoot(c.scope, env); r != c.rules {
+			t.Errorf("rules %s: %s", c.scope, r)
+		}
+	}
+	out, _, err := a.Rules("demo", []RuleFile{{Rel: "AGENTS.md", Content: []byte("---\nx: 1\n---\nSeja breve.\n")}, {Rel: "docs/estilo.md", Content: []byte("Estilo.\n")}}, ScopeProject, env)
+	if err != nil || len(out) != 2 {
+		t.Fatal(err)
+	}
+	if out[0].Path != filepath.Join(env.WorkDir, ".agents", "rules", "atlana-demo-AGENTS.md") || string(out[0].Content) != "---\ntrigger: always_on\n---\n\nSeja breve.\n" {
+		t.Errorf("rule: %s\n%s", out[0].Path, out[0].Content)
+	}
+	if filepath.Base(out[1].Path) != "atlana-demo-docs-estilo.md" {
+		t.Errorf("rule aninhada: %s", out[1].Path)
+	}
+
+	cfg, err := a.MCPConfig(ScopeUser, env)
+	if err != nil || cfg.Path != filepath.Join(env.Home, ".gemini", "config", "mcp_config.json") || cfg.Section != "mcpServers" {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	if _, err := a.MCPConfig(ScopeProject, env); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("mcp project: %v", err)
+	}
+	s, err := a.MCPServer(map[string]any{"command": "${PLUGIN_ROOT}/srv", "env": map[string]any{"GITHUB_TOKEN": "${GITHUB_TOKEN}", "MODE": "ro"}}, "/pack")
+	if err != nil || s["command"] != "/pack/srv" || len(s["env"].(map[string]any)) != 1 || s["env"].(map[string]any)["MODE"] != "ro" {
+		t.Errorf("stdio: %v %v", s, err)
+	}
+	s, err = a.MCPServer(map[string]any{"command": "srv", "env": map[string]any{"T": "${T}"}}, "/pack")
+	if _, has := s["env"]; err != nil || has {
+		t.Errorf("env só com repasse some: %v %v", s, err)
+	}
+	for _, bad := range []map[string]any{
+		{"url": "https://x/mcp", "headers": map[string]any{"Authorization": "Bearer ${TOK}"}},
+		{"command": "srv", "env": map[string]any{"A": "${B}"}},
+		{"command": "srv", "env": map[string]any{"A": "x-${A}"}},
+		{"type": "sse", "url": "https://x/sse"},
+	} {
+		if _, err := a.MCPServer(bad, "/pack"); err == nil {
+			t.Errorf("deveria recusar %v", bad)
+		}
+	}
+	if s, err := a.MCPServer(map[string]any{"type": "http", "url": "https://x/mcp"}, "/pack"); err != nil || s["url"] != "https://x/mcp" || s["type"] != nil {
+		t.Errorf("http: %v %v", s, err)
+	}
+
+	file, b, _, err := a.Command(manifest.Command{Name: "resumir", Description: "Resume.", Body: "Foque em $ARGUMENTS.\n"})
+	if err != nil || file != filepath.Join("resumir", "SKILL.md") {
+		t.Fatal(file, err)
+	}
+	for _, w := range []string{"name: resumir", "description: Resume.", "[o texto que a pessoa digitou depois de /resumir]"} {
+		if !strings.Contains(string(b), w) {
+			t.Errorf("command-skill sem %q:\n%s", w, b)
 		}
 	}
 }

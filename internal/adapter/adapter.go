@@ -80,14 +80,14 @@ type Adapter interface {
 
 // All devolve todos os adaptadores conhecidos, ordenados por ID.
 func All() []Adapter {
-	list := []Adapter{cursor{}, claude{}, codex{}, crush{}, gemini{}, grok{}, opencode{}}
+	list := []Adapter{antigravity{}, cursor{}, claude{}, codex{}, crush{}, gemini{}, grok{}, opencode{}}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID() < list[j].ID() })
 	return list
 }
 
 // Get busca um adaptador por ID.
 func Get(id string) (Adapter, error) {
-	ids := make([]string, 0, 7)
+	ids := make([]string, 0, 8)
 	for _, a := range All() {
 		if a.ID() == id {
 			return a, nil
@@ -98,6 +98,7 @@ func Get(id string) (Adapter, error) {
 }
 
 // detectBy procura binários no PATH e diretórios de configuração.
+// detectBy procura binários no PATH e caminhos (pastas ou arquivos) de config.
 func detectBy(env Env, bins []string, dirs []string) Detection {
 	var d Detection
 	if env.LookPath != nil {
@@ -108,8 +109,12 @@ func detectBy(env Env, bins []string, dirs []string) Detection {
 		}
 	}
 	for _, dir := range dirs {
-		if st, err := os.Stat(dir); err == nil && st.IsDir() {
-			d.Evidence = append(d.Evidence, "diretório "+dir)
+		if st, err := os.Stat(dir); err == nil {
+			kind := "diretório "
+			if !st.IsDir() {
+				kind = "arquivo "
+			}
+			d.Evidence = append(d.Evidence, kind+dir)
 		}
 	}
 	d.Installed = len(d.Evidence) > 0
