@@ -9,8 +9,8 @@ O formato Atlana é uma camada **fina** por cima de padrões abertos. A regra pr
 | Skills | [Agent Skills](https://agentskills.io/specification) (`SKILL.md`), sem mudanças | validado e instalado (Cursor, Claude Code, Codex, Gemini CLI, Antigravity; exportado para o Grok Bot) |
 | Rules | `AGENTS.md` e outros `.md` (fonte), em arquivos próprios por agente | validado e instalado (Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Antigravity) |
 | MCP | `mcp.json` no formato de Agent Plugins (`mcpServers`) | validado (chaves e segredos) e instalado por merge (Claude Code, Cursor, Gemini CLI, Codex, OpenCode, Antigravity) |
-| Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode) |
-| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI, OpenCode); fallback nos outros |
+| Subagents | formato Atlana (`agents/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, OpenCode, Antigravity) |
+| Hooks | formato Atlana (`hooks/<nome>/hook.yaml`) | validado e instalado (Claude Code, Gemini CLI, OpenCode, Antigravity); fallback nos outros |
 | Commands | formato Atlana (`commands/<nome>.md`) | validado e instalado (Claude Code, Gemini CLI, Cursor, OpenCode, Antigravity) |
 
 ## 1. Pack
@@ -171,6 +171,7 @@ No Codex, se o `config.toml` declara `mcp_servers` de outro jeito (tabela `[mcp_
 |---|---|---|
 | Claude Code (`claude`) | `.claude/agents/<nome>.md` (tools `Read, Grep…`; model `inherit/haiku/opus`) | `.claude/settings.json` → `hooks` (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `Stop`) |
 | Gemini CLI (`gemini`) | `.gemini/agents/<nome>.md` (`kind: local`; tools `read_file…`; `fast`/`smart` usam o modelo da sessão, com aviso) | `.gemini/settings.json` → `hooks` (`BeforeTool`, `AfterTool`, `BeforeAgent`, `SessionStart`, `AfterAgent`) |
+| Antigravity (`antigravity`) | `~/.gemini/config/agents/<nome>/agent.md` ou `.agents/agents/<nome>/agent.md` (`subagent: true`, `mainAgent: false`; tools `read_file`, `edit_file`, `write_file`, `run_command`, `search_web`; sem `tools` no pack = lista completa; `model` fica o da sessão, com aviso) | `hooks.json` da mesma raiz, hook nomeado `atlana` (`PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`; sem `prompt_submit`). O dispatcher responde em JSON no stdout: `{"decision":"deny"}` quando um hook nega em `pre_tool`, `{}` nos outros casos (nunca `allow`) |
 | OpenCode (`opencode`) | `$XDG_CONFIG_HOME/opencode/agents/<nome>.md` ou `.opencode/agents/<nome>.md` (`mode: subagent`; `permission` com `edit`, `bash`, `webfetch`; `shell:readonly` vira `bash: ask`; leitura e busca sempre liberadas; `fast`/`smart` usam o modelo da sessão) | plugin gerado por pack em `$XDG_CONFIG_HOME/opencode/plugins/atlana-<pack>.js` (ou `.opencode/plugins/`), que chama `atlana hook dispatch --pack <pack>`: `tool.execute.before` (nega com exit 2), `tool.execute.after`, `session.created`, `session.idle`; sem `prompt_submit` |
 | Cursor, Codex | pulado, com aviso | `fallback` de cada hook |
 | Grok Bot | pulado, com aviso | `skip` (não tem rules) |

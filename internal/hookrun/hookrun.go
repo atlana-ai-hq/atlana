@@ -55,6 +55,19 @@ func Normalize(agent, event string, payload map[string]any, toolCategory func(st
 		ev.Path = str(in, "file_path", "filePath", "path", "absolute_path", "notebook_path")
 		ev.Command = str(in, "command")
 	}
+	// Antigravity: {"toolCall": {"name", "args"}, "lastUserInput"}.
+	if tc, ok := payload["toolCall"].(map[string]any); ok {
+		if name := str(tc, "name"); name != "" {
+			ev.Tool = toolCategory(name)
+		}
+		if args, ok := tc["args"].(map[string]any); ok {
+			ev.Path = str(args, "TargetFile", "AbsolutePath", "Path")
+			ev.Command = str(args, "CommandLine")
+		}
+	}
+	if ev.Prompt == "" {
+		ev.Prompt = str(payload, "lastUserInput")
+	}
 	if ev.Path != "" && ev.Cwd != "" && filepath.IsAbs(ev.Path) {
 		if rel, err := filepath.Rel(ev.Cwd, ev.Path); err == nil && !strings.HasPrefix(rel, "..") {
 			ev.Path = filepath.ToSlash(rel)

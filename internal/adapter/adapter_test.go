@@ -400,3 +400,52 @@ func TestAntigravity(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityAgentsAndHooks(t *testing.T) {
+	env := fakeEnv(t)
+	a := antigravity{}
+	if r, _ := a.AgentsRoot(ScopeProject, env); r != filepath.Join(env.WorkDir, ".agents", "agents") {
+		t.Errorf("agents root: %s", r)
+	}
+	file, b, notes, err := a.Subagent(manifest.Subagent{Name: "revisor", Description: "Revisa.", Tools: []string{"read", "search", "shell:readonly"}, Model: "fast", Body: "Revise o diff.\n"})
+	if err != nil || file != filepath.Join("revisor", "agent.md") {
+		t.Fatal(file, err)
+	}
+	for _, w := range []string{"subagent: true", "mainAgent: false", "tools:\n    - read_file\n", "# revisor\n\nRevise o diff."} {
+		if !strings.Contains(string(b), w) {
+			t.Errorf("sem %q:\n%s", w, b)
+		}
+	}
+	if strings.Contains(string(b), "run_command") || len(notes) != 2 {
+		t.Errorf("shell:readonly fica de fora e model avisa: %v\n%s", notes, b)
+	}
+	_, b, _, _ = a.Subagent(manifest.Subagent{Name: "tudo", Description: "Tudo.", Model: "inherit", Body: "# Título\n\nCorpo.\n"})
+	if !strings.Contains(string(b), "- search_web") || strings.Contains(string(b), "# tudo") {
+		t.Errorf("sem tools = lista completa, H1 mantido:\n%s", b)
+	}
+
+	cfg, _ := a.HooksConfig(ScopeUser, env)
+	if cfg.Path != filepath.Join(env.Home, ".gemini", "config", "hooks.json") || cfg.Section != "atlana" {
+		t.Errorf("%+v", cfg)
+	}
+	if _, ok := a.HookEvent("prompt_submit"); ok {
+		t.Error("prompt_submit não tem equivalente fiel")
+	}
+	if e := a.HookEntry("PreToolUse", "x"); e["matcher"] != "*" || e["hooks"] == nil {
+		t.Errorf("tool: %v", e)
+	}
+	if e := a.HookEntry("Stop", "x"); e["command"] != "x" || e["hooks"] != nil {
+		t.Errorf("flat: %v", e)
+	}
+	if got := string(AntigravityReply("pre_tool", 2, "não edite .plan\n")); got != `{"decision":"deny","reason":"não edite .plan"}` {
+		t.Errorf("deny: %s", got)
+	}
+	for _, c := range []struct {
+		ev   string
+		code int
+	}{{"pre_tool", 0}, {"stop", 2}, {"post_tool", 2}} {
+		if got := string(AntigravityReply(c.ev, c.code, "x")); got != "{}" {
+			t.Errorf("%v: %s (nunca allow)", c, got)
+		}
+	}
+}

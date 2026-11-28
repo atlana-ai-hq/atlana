@@ -101,3 +101,20 @@ func TestMatchesEvent(t *testing.T) {
 		t.Fatal("evento")
 	}
 }
+
+func TestNormalizeAntigravity(t *testing.T) {
+	cat := func(n string) string { return map[string]string{"edit_file": "edit", "run_command": "shell"}[n] }
+	ev := Normalize("antigravity", "pre_tool", map[string]any{
+		"cwd": "/proj", "lastUserInput": "corrija o teste",
+		"toolCall": map[string]any{"name": "edit_file", "args": map[string]any{"TargetFile": "/proj/.plan/x.md"}},
+	}, cat)
+	if ev.Tool != "edit" || ev.Path != ".plan/x.md" || ev.Prompt != "corrija o teste" {
+		t.Fatalf("%+v", ev)
+	}
+	ev = Normalize("antigravity", "pre_tool", map[string]any{
+		"toolCall": map[string]any{"name": "run_command", "args": map[string]any{"CommandLine": "rm -rf /"}},
+	}, cat)
+	if ev.Tool != "shell" || ev.Command != "rm -rf /" {
+		t.Fatalf("%+v", ev)
+	}
+}

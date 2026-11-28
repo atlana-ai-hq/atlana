@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,7 @@ func (antigravity) Detect(env Env) Detection {
 }
 func (antigravity) Supports(m manifest.Module) bool {
 	return m == manifest.ModuleSkills || m == manifest.ModuleRules || m == manifest.ModuleMCP ||
-		m == manifest.ModuleCommands
+		m == manifest.ModuleCommands || m == manifest.ModuleAgents || m == manifest.ModuleHooks
 }
 
 func antigravityRoot(scope Scope, env Env, sub ...string) (string, error) {
@@ -121,4 +122,87 @@ func (antigravity) Command(c manifest.Command) (string, []byte, []string, error)
 	}
 	b, err := renderAgent(map[string]any{"name": c.Name, "description": c.Description}, []string{"name", "description"}, body)
 	return filepath.Join(c.Name, "SKILL.md"), b, notes, err
+}
+
+// Subagents: agents/<nome>/agent.md com subagent: true e mainAgent: false.
+// Sem tools, o Antigravity dá só um conjunto pequeno de leitura; no atlana,
+// lista vazia é "todas", então ela vira a lista completa.
+var antigravityTools = map[string][]string{
+	"read": {"read_file"}, "search": {"read_file"}, "edit": {"edit_file"}, "write": {"write_file"},
+	"shell": {"run_command", "manage_task"}, "web": {"search_web"},
+	"shell:readonly": nil, "mcp": nil,
+}
+
+func (antigravity) AgentsRoot(scope Scope, env Env) (string, error) {
+	return antigravityRoot(scope, env, "agents")
+}
+func (antigravity) Subagent(s manifest.Subagent) (string, []byte, []string, error) {
+	front, notes, err := subagentWithTools("antigravity", s, antigravityTools)
+	if err != nil {
+		return "", nil, notes, err
+	}
+	if _, ok := front["tools"]; !ok {
+		front["tools"] = []string{"read_file", "edit_file", "write_file", "run_command", "manage_task", "search_web"}
+	}
+	front["subagent"] = true
+	front["mainAgent"] = false
+	if s.Model != "inherit" {
+		notes = append(notes, fmt.Sprintf("antigravity: model %q não tem equivalente; o subagent %s usa o modelo da sessão", s.Model, s.Name))
+	}
+	body := s.Body
+	if !strings.HasPrefix(strings.TrimLeft(body, "\n"), "# ") {
+		body = "# " + s.Name + "\n\n" + body
+	}
+	b, err := renderAgent(front, []string{"name", "description", "subagent", "mainAgent", "tools"}, body)
+	return filepath.Join(s.Name, "agent.md"), b, notes, err
+}
+
+// Hooks: hooks.json da raiz, num hook nomeado "atlana" com o mesmo formato de
+// eventos do Claude Code. O Antigravity lê a decisão em JSON no stdout (o
+// dispatcher responde por ele; ver AntigravityReply).
+var antigravityEvents = map[string]string{
+	"pre_tool": "PreToolUse", "post_tool": "PostToolUse",
+	"session_start": "SessionStart", "stop": "Stop",
+	// prompt_submit fica de fora: PreInvocation roda antes de cada chamada ao
+	// modelo, não só quando a pessoa envia uma mensagem.
+}
+
+func (antigravity) HooksConfig(scope Scope, env Env) (ConfigFile, error) {
+	path, err := antigravityRoot(scope, env, "hooks.json")
+	return ConfigFile{Path: path, Format: FormatJSON, Section: "atlana"}, err
+}
+func (antigravity) HookEvent(e string) (string, bool) { n, ok := antigravityEvents[e]; return n, ok }
+func (antigravity) ToolCategory(native string) string {
+	switch {
+	case native == "run_command":
+		return "shell"
+	case native == "edit_file":
+		return "edit"
+	case native == "write_file":
+		return "write"
+	case native == "read_file" || native == "view_file" || native == "list_directory" || native == "grep_search" || native == "find":
+		return "read"
+	case native == "mcp_tool" || strings.HasPrefix(native, "mcp_"):
+		return "mcp"
+	}
+	return ""
+}
+
+// HookEntry: eventos de ferramenta usam {matcher, hooks}; os outros, o handler direto.
+func (antigravity) HookEntry(nativeEvent, command string) map[string]any {
+	if nativeEvent == "PreToolUse" || nativeEvent == "PostToolUse" {
+		return toolEntry(nativeEvent, command, nativeEvent)
+	}
+	return map[string]any{"type": "command", "command": command}
+}
+
+// AntigravityReply traduz o resultado do dispatcher para o stdout do
+// Antigravity. Só nega quando um hook negou (exit 2) num pre_tool; nos outros
+// casos devolve {}, sem "allow", para não pular as permissões da pessoa.
+func AntigravityReply(event string, code int, reason string) []byte {
+	if code == 2 && event == "pre_tool" {
+		b, _ := json.Marshal(map[string]string{"decision": "deny", "reason": strings.TrimSpace(reason)})
+		return b
+	}
+	return []byte("{}")
 }

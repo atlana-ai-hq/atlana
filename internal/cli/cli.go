@@ -530,10 +530,18 @@ func (a *App) hook(args []string) int {
 		}
 	}
 	ev := hookrun.Normalize(*agent, *event, payload, ha.ToolCategory)
+	var packs []string
 	if *pack != "" {
-		return hookrun.Dispatch(*dir, ev, a.Stderr, *pack)
+		packs = []string{*pack}
 	}
-	return hookrun.Dispatch(*dir, ev, a.Stderr)
+	if *agent == "antigravity" {
+		// O Antigravity lê a decisão em JSON no stdout, não o exit code.
+		var reason bytes.Buffer
+		code := hookrun.Dispatch(*dir, ev, io.MultiWriter(a.Stderr, &reason), packs...)
+		fmt.Fprintln(a.Stdout, string(adapter.AntigravityReply(*event, code, reason.String())))
+		return 0
+	}
+	return hookrun.Dispatch(*dir, ev, a.Stderr, packs...)
 }
 
 // resolvePack devolve o diretório local do pack e a origem para o lock ("" = local).
